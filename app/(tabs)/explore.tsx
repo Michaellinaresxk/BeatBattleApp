@@ -1,109 +1,673 @@
-import { StyleSheet, Image, Platform } from 'react-native';
-
-import { Collapsible } from '@/components/Collapsible';
-import { ExternalLink } from '@/components/ExternalLink';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
+import React, { useRef, useEffect } from 'react';
+import {
+  StyleSheet,
+  Image,
+  ScrollView,
+  View,
+  Dimensions,
+  TouchableOpacity,
+} from 'react-native';
+import Animated, {
+  FadeInDown,
+  FadeInRight,
+  FadeIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  useAnimatedScrollHandler,
+  interpolate,
+  Extrapolate,
+} from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { IconSymbol } from '@/components/ui/IconSymbol';
+
+const { width } = Dimensions.get('window');
+
+// Enhanced Feature Card with hover animation
+const FeatureCard = ({ title, description, imageUrl, index }) => {
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ scale: scale.value }],
+    };
+  });
+
+  const handlePressIn = () => {
+    scale.value = withSpring(1.05);
+  };
+
+  const handlePressOut = () => {
+    scale.value = withSpring(1);
+  };
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+    >
+      <Animated.View
+        entering={FadeInDown.delay(index * 200).springify()}
+        style={[styles.card, animatedStyle]}
+      >
+        <LinearGradient
+          colors={['rgba(88, 28, 135, 0.8)', 'rgba(55, 48, 163, 0.6)']}
+          style={styles.cardGradient}
+        >
+          <Image source={{ uri: imageUrl }} style={styles.cardImage} />
+          <View style={styles.cardContent}>
+            <ThemedText type='title' style={styles.cardTitle}>
+              {title}
+            </ThemedText>
+            <ThemedText style={styles.cardDescription}>
+              {description}
+            </ThemedText>
+          </View>
+        </LinearGradient>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+};
+
+// New upcoming feature cards with glowing effect
+const NewFeatureCard = ({
+  title,
+  releaseDate,
+  description,
+  imageUrl,
+  index,
+}) => {
+  return (
+    <Animated.View
+      entering={FadeInRight.delay(index * 150).springify()}
+      style={styles.newFeatureCard}
+    >
+      <LinearGradient
+        colors={['rgba(14, 165, 233, 0.7)', 'rgba(139, 92, 246, 0.7)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.newFeatureGradient}
+      >
+        <View style={styles.releaseDateTag}>
+          <ThemedText style={styles.releaseDate}>
+            Coming {releaseDate}
+          </ThemedText>
+        </View>
+        <Image source={{ uri: imageUrl }} style={styles.newFeatureImage} />
+        <View style={styles.newFeatureContent}>
+          <ThemedText type='title' style={styles.newFeatureTitle}>
+            {title}
+          </ThemedText>
+          <ThemedText style={styles.newFeatureDescription}>
+            {description}
+          </ThemedText>
+        </View>
+      </LinearGradient>
+    </Animated.View>
+  );
+};
+
+// Team member component for About Us section
+const TeamMember = ({ name, role, imageUrl, index }) => {
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(index * 100).springify()}
+      style={styles.teamMemberCard}
+    >
+      <Image source={{ uri: imageUrl }} style={styles.teamMemberImage} />
+      <View style={styles.teamMemberInfo}>
+        <ThemedText type='title' style={styles.teamMemberName}>
+          {name}
+        </ThemedText>
+        <ThemedText style={styles.teamMemberRole}>{role}</ThemedText>
+      </View>
+    </Animated.View>
+  );
+};
+
+// Current features
+const features = [
+  {
+    id: 1,
+    title: 'Multiplayer Arenas',
+    description:
+      'Compete with friends in high-octane multiplayer battles across various game modes.',
+    imageUrl: '/placeholder.svg?height=200&width=400',
+  },
+  {
+    id: 2,
+    title: 'Immersive Storylines',
+    description:
+      'Dive into rich, narrative-driven single-player campaigns with stunning visuals.',
+    imageUrl: '/placeholder.svg?height=200&width=400',
+  },
+  {
+    id: 3,
+    title: 'Cross-Platform Play',
+    description:
+      'Play seamlessly across devices with our advanced cross-platform technology.',
+    imageUrl: '/placeholder.svg?height=200&width=400',
+  },
+  {
+    id: 4,
+    title: 'Regular Events',
+    description:
+      'Participate in weekly tournaments and seasonal events for exclusive rewards.',
+    imageUrl: '/placeholder.svg?height=200&width=400',
+  },
+];
+
+// New upcoming features
+const upcomingFeatures = [
+  {
+    id: 1,
+    title: 'Virtual Reality Support',
+    releaseDate: 'March 2025',
+    description:
+      'Experience our games in stunning VR with full motion controls and immersive environments.',
+    imageUrl: '/placeholder.svg?height=150&width=300',
+  },
+  {
+    id: 2,
+    title: 'AI Opponents',
+    releaseDate: 'April 2025',
+    description:
+      'Challenge adaptive AI opponents that learn from your playstyle and provide a unique challenge every time.',
+    imageUrl: '/placeholder.svg?height=150&width=300',
+  },
+  {
+    id: 3,
+    title: 'Custom Character Creator',
+    releaseDate: 'May 2025',
+    description:
+      'Design your perfect in-game avatar with thousands of customization options.',
+    imageUrl: '/placeholder.svg?height=150&width=300',
+  },
+];
+
+// Team members for About Us section
+const teamMembers = [
+  {
+    id: 1,
+    name: 'Alex Rodriguez',
+    role: 'Lead Game Designer',
+    imageUrl: '/placeholder.svg?height=120&width=120',
+  },
+  {
+    id: 2,
+    name: 'Sophia Chen',
+    role: 'Creative Director',
+    imageUrl: '/placeholder.svg?height=120&width=120',
+  },
+  {
+    id: 3,
+    name: 'Marcus Johnson',
+    role: 'Lead Developer',
+    imageUrl: '/placeholder.svg?height=120&width=120',
+  },
+];
 
 export default function TabTwoScreen() {
+  const scrollY = useSharedValue(0);
+  const scrollRef = useRef(null);
+
+  // Handler for scroll animation
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  // Create animated cards that respond to scroll position
+  const createScrollAnimatedComponent = (index, startPosition = 100) => {
+    const position = index * 200 + startPosition;
+    return useAnimatedStyle(() => {
+      const opacity = interpolate(
+        scrollY.value,
+        [position - 400, position - 150],
+        [0, 1],
+        Extrapolate.CLAMP
+      );
+
+      const translateY = interpolate(
+        scrollY.value,
+        [position - 400, position - 150],
+        [100, 0],
+        Extrapolate.CLAMP
+      );
+
+      return {
+        opacity,
+        transform: [{ translateY }],
+      };
+    });
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Explore</ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image source={require('@/assets/images/react-logo.png')} style={{ alignSelf: 'center' }} />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Custom fonts">
-        <ThemedText>
-          Open <ThemedText type="defaultSemiBold">app/_layout.tsx</ThemedText> to see how to load{' '}
-          <ThemedText style={{ fontFamily: 'SpaceMono' }}>
-            custom fonts such as this one.
+    <Animated.ScrollView
+      ref={scrollRef}
+      style={styles.container}
+      onScroll={scrollHandler}
+      scrollEventThrottle={16}
+    >
+      <ThemedView style={styles.content}>
+        {/* Hero Image */}
+        <View style={styles.heroImageContainer}>
+          <Image
+            source={{ uri: '/placeholder.svg?height=500&width=800' }}
+            style={styles.heroImage}
+          />
+          <LinearGradient
+            colors={[
+              'rgba(15, 15, 26, 0)',
+              'rgba(15, 15, 26, 0.8)',
+              'rgba(15, 15, 26, 1)',
+            ]}
+            style={styles.heroGradient}
+          />
+        </View>
+
+        {/* Hero Section */}
+        <View style={styles.heroSection}>
+          <ThemedText type='title' style={styles.heroTitle}>
+            Discover Our Features
           </ThemedText>
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/versions/latest/sdk/font">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user's current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful <ThemedText type="defaultSemiBold">react-native-reanimated</ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
+          <ThemedText style={styles.heroSubtitle}>
+            Explore the cutting-edge features that make our gaming platform
+            stand out
+          </ThemedText>
+        </View>
+
+        {/* Feature Cards */}
+        <View style={styles.cardsContainer}>
+          {features.map((feature, index) => (
+            <Animated.View
+              key={feature.id}
+              style={createScrollAnimatedComponent(index, 300)}
+            >
+              <FeatureCard
+                title={feature.title}
+                description={feature.description}
+                imageUrl={feature.imageUrl}
+                index={index}
+              />
+            </Animated.View>
+          ))}
+        </View>
+
+        {/* NEW: Upcoming Features Section */}
+        <View style={styles.upcomingSection}>
+          <LinearGradient
+            colors={['rgba(14, 165, 233, 0.2)', 'rgba(139, 92, 246, 0.2)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.upcomingSectionBackground}
+          >
+            <View style={styles.upcomingHeader}>
+              <ThemedText type='title' style={styles.upcomingTitle}>
+                Coming Soon
+              </ThemedText>
+              <View style={styles.glowingDot}></View>
+              <ThemedText style={styles.upcomingSubtitle}>
+                Exciting new features on the horizon
+              </ThemedText>
+            </View>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.upcomingFeaturesContainer}
+            >
+              {upcomingFeatures.map((feature, index) => (
+                <Animated.View
+                  key={feature.id}
+                  style={createScrollAnimatedComponent(
+                    index + features.length,
+                    800
+                  )}
+                >
+                  <NewFeatureCard
+                    title={feature.title}
+                    releaseDate={feature.releaseDate}
+                    description={feature.description}
+                    imageUrl={feature.imageUrl}
+                    index={index}
+                  />
+                </Animated.View>
+              ))}
+            </ScrollView>
+          </LinearGradient>
+        </View>
+
+        {/* Enhanced About Us Section */}
+        <View style={styles.aboutSection}>
+          <ThemedText type='title' style={styles.sectionTitle}>
+            About Us
+          </ThemedText>
+
+          <LinearGradient
+            colors={['rgba(99, 102, 241, 0.15)', 'rgba(88, 28, 135, 0.15)']}
+            style={styles.aboutCard}
+          >
+            <ThemedText style={styles.aboutText}>
+              We are a passionate team of game developers and creators dedicated
+              to bringing you the most immersive and exciting gaming
+              experiences. Our mission is to push the boundaries of what's
+              possible in gaming and create unforgettable adventures for players
+              worldwide.
             </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+
+            {/* Team members */}
+            <ThemedText type='title' style={styles.teamTitle}>
+              Meet Our Team
+            </ThemedText>
+
+            <View style={styles.teamContainer}>
+              {teamMembers.map((member, index) => (
+                <Animated.View
+                  key={member.id}
+                  style={createScrollAnimatedComponent(
+                    index + features.length + upcomingFeatures.length,
+                    1200
+                  )}
+                >
+                  <TeamMember
+                    name={member.name}
+                    role={member.role}
+                    imageUrl={member.imageUrl}
+                    index={index}
+                  />
+                </Animated.View>
+              ))}
+            </View>
+
+            {/* Company stats */}
+            <View style={styles.statsContainer}>
+              <View style={styles.statItem}>
+                <ThemedText type='title' style={styles.statNumber}>
+                  10+
+                </ThemedText>
+                <ThemedText style={styles.statLabel}>
+                  Games in Development
+                </ThemedText>
+              </View>
+              <View style={styles.statItem}>
+                <ThemedText type='title' style={styles.statNumber}>
+                  1M+
+                </ThemedText>
+                <ThemedText style={styles.statLabel}>Global Players</ThemedText>
+              </View>
+              <View style={styles.statItem}>
+                <ThemedText type='title' style={styles.statNumber}>
+                  24/7
+                </ThemedText>
+                <ThemedText style={styles.statLabel}>Support</ThemedText>
+              </View>
+            </View>
+          </LinearGradient>
+        </View>
+      </ThemedView>
+    </Animated.ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  container: {
+    flex: 1,
+    backgroundColor: '#0f0f1a',
   },
-  titleContainer: {
+  content: {
+    padding: 20,
+  },
+  heroImageContainer: {
+    height: 400,
+    width: '100%',
+    position: 'relative',
+    marginBottom: 20,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  heroGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 200,
+  },
+  heroSection: {
+    marginBottom: 40,
+    alignItems: 'center',
+  },
+  heroTitle: {
+    fontSize: 32,
+    textAlign: 'center',
+    marginBottom: 10,
+    color: '#fff',
+  },
+  heroSubtitle: {
+    fontSize: 16,
+    textAlign: 'center',
+    opacity: 0.8,
+    maxWidth: '80%',
+  },
+  cardsContainer: {
+    gap: 20,
+    marginBottom: 40,
+  },
+  card: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    elevation: 5,
+    shadowColor: '#6366f1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  cardGradient: {
+    borderRadius: 16,
+  },
+  cardImage: {
+    width: '100%',
+    height: 200,
+    resizeMode: 'cover',
+  },
+  cardContent: {
+    padding: 16,
+  },
+  cardTitle: {
+    fontSize: 20,
+    marginBottom: 8,
+    color: '#fff',
+  },
+  cardDescription: {
+    fontSize: 14,
+    opacity: 0.9,
+  },
+
+  // Upcoming features section styles
+  upcomingSection: {
+    marginBottom: 40,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  upcomingSectionBackground: {
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+  },
+  upcomingHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  upcomingTitle: {
+    fontSize: 28,
+    color: '#fff',
+    marginBottom: 10,
+    textShadowColor: 'rgba(139, 92, 246, 0.8)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
+  },
+  glowingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#0ea5e9',
+    marginBottom: 10,
+    shadowColor: '#0ea5e9',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
+  },
+  upcomingSubtitle: {
+    fontSize: 16,
+    textAlign: 'center',
+    opacity: 0.9,
+  },
+  upcomingFeaturesContainer: {
+    paddingVertical: 10,
+    paddingHorizontal: 5,
+    gap: 15,
+  },
+  newFeatureCard: {
+    width: width * 0.7,
+    borderRadius: 16,
+    overflow: 'hidden',
+    elevation: 8,
+    shadowColor: '#0ea5e9',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+  },
+  newFeatureGradient: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+  },
+  releaseDateTag: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(14, 165, 233, 0.8)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    zIndex: 10,
+  },
+  releaseDate: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  newFeatureImage: {
+    width: '100%',
+    height: 150,
+    resizeMode: 'cover',
+  },
+  newFeatureContent: {
+    padding: 16,
+  },
+  newFeatureTitle: {
+    fontSize: 18,
+    marginBottom: 8,
+    color: '#fff',
+  },
+  newFeatureDescription: {
+    fontSize: 14,
+    opacity: 0.9,
+  },
+
+  // About Us section styles
+  aboutSection: {
+    marginBottom: 40,
+  },
+  sectionTitle: {
+    fontSize: 28,
+    marginBottom: 20,
+    color: '#fff',
+    textShadowColor: 'rgba(99, 102, 241, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
+  aboutCard: {
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.2)',
+  },
+  aboutText: {
+    fontSize: 16,
+    lineHeight: 24,
+    marginBottom: 24,
+    opacity: 0.9,
+  },
+  teamTitle: {
+    fontSize: 22,
+    marginBottom: 15,
+    color: '#fff',
+    textAlign: 'center',
+  },
+  teamContainer: {
     flexDirection: 'row',
-    gap: 8,
+    justifyContent: 'space-around',
+    flexWrap: 'wrap',
+    marginBottom: 20,
+  },
+  teamMemberCard: {
+    width: width / 3.5,
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  teamMemberImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    marginBottom: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(99, 102, 241, 0.6)',
+  },
+  teamMemberInfo: {
+    alignItems: 'center',
+  },
+  teamMemberName: {
+    fontSize: 16,
+    color: '#fff',
+    textAlign: 'center',
+  },
+  teamMemberRole: {
+    fontSize: 12,
+    opacity: 0.8,
+    textAlign: 'center',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 20,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+    borderRadius: 12,
+    padding: 15,
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 28,
+    color: '#6366f1',
+    marginBottom: 4,
+    textShadowColor: 'rgba(99, 102, 241, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
+  statLabel: {
+    fontSize: 14,
+    opacity: 0.8,
+    textAlign: 'center',
   },
 });
