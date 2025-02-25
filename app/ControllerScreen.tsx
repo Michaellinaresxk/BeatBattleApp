@@ -7,33 +7,52 @@ import {
   TouchableOpacity,
   StyleSheet,
   Dimensions,
-  Pressable,
+  Vibration,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import { Ionicons, FontAwesome5, MaterialIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 
 const { width, height } = Dimensions.get('window');
 
-export default function ControllerScreen({ navigation }) {
+export default function ControllerScreen() {
+  const router = useRouter();
   const [lastPressed, setLastPressed] = useState('');
+  const [activeButton, setActiveButton] = useState(null);
 
-  // Manejar pulsaciones de botones direccionales
+  // Manejar pulsaciones de botones direccionales con feedback
   const handleDirectionPress = (direction) => {
     setLastPressed(direction);
+    setActiveButton(direction);
+    Vibration.vibrate(30);
     console.log(`Presionado: ${direction}`);
-    // Aquí puedes enviar comandos a tu juego
+
+    // Resetear después de un tiempo
+    setTimeout(() => {
+      setActiveButton(null);
+    }, 200);
   };
 
   // Manejar pulsación del botón central
   const handleCenterPress = () => {
     setLastPressed('enter');
+    setActiveButton('enter');
+    Vibration.vibrate(50);
     console.log('Presionado: Enter');
-    // Aquí puedes enviar el comando "enter" a tu juego
+
+    // Resetear después de un tiempo
+    setTimeout(() => {
+      setActiveButton(null);
+    }, 200);
   };
 
   // Abrir menú
   const openMenu = () => {
-    navigation && navigation.navigate('MenuScreen');
+    router.push('/MenuScreen');
+  };
+
+  const openOptionScreen = () => {
+    router.push('/MenuScreen');
   };
 
   return (
@@ -84,93 +103,100 @@ export default function ControllerScreen({ navigation }) {
         </View>
       )}
 
-      {/* Controlador direccional */}
+      {/* Controlador direccional - Diseño 3D corregido */}
       <View style={styles.controllerContainer}>
-        <View style={styles.dpadContainer}>
-          {/* Botón Superior */}
-          <Pressable
-            onPress={() => handleDirectionPress('up')}
-            style={({ pressed }) => [
-              styles.dpadButton,
-              styles.dpadUp,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <LinearGradient
-              colors={['#414151', '#2A2A36']}
-              style={styles.dpadButtonGradient}
-            >
-              <Ionicons name='chevron-up' size={32} color='white' />
-            </LinearGradient>
-          </Pressable>
+        {/* D-pad principal */}
+        <View style={styles.dpadMainContainer}>
+          {/* Base con borde */}
+          <View style={styles.dpadBaseOuter}>
+            <View style={styles.dpadBaseInner}>
+              {/* Líneas cruzadas */}
+              <View style={styles.crossLine1} />
+              <View style={styles.crossLine2} />
+              <View style={styles.crossLine3} />
+              <View style={styles.crossLine4} />
 
-          {/* Botón Izquierdo */}
-          <Pressable
-            onPress={() => handleDirectionPress('left')}
-            style={({ pressed }) => [
-              styles.dpadButton,
-              styles.dpadLeft,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <LinearGradient
-              colors={['#414151', '#2A2A36']}
-              style={styles.dpadButtonGradient}
-            >
-              <Ionicons name='chevron-back' size={32} color='white' />
-            </LinearGradient>
-          </Pressable>
+              {/* Botones direccionales */}
+              <TouchableOpacity
+                style={[
+                  styles.dirButton,
+                  styles.upButton,
+                  activeButton === 'up' && styles.activeButton,
+                ]}
+                activeOpacity={0.7}
+                onPress={() => handleDirectionPress('up')}
+              >
+                <MaterialIcons
+                  name='keyboard-arrow-up'
+                  size={32}
+                  color='white'
+                />
+              </TouchableOpacity>
 
-          {/* Botón Central */}
-          <Pressable
-            onPress={handleCenterPress}
-            style={({ pressed }) => [
-              styles.dpadButton,
-              styles.dpadCenter,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <LinearGradient
-              colors={['#4A6BF5', '#2541B2']}
-              style={styles.dpadButtonGradient}
-            >
-              <FontAwesome5 name='arrow-right' size={24} color='white' />
-            </LinearGradient>
-          </Pressable>
+              <TouchableOpacity
+                style={[
+                  styles.dirButton,
+                  styles.rightButton,
+                  activeButton === 'right' && styles.activeButton,
+                ]}
+                activeOpacity={0.7}
+                onPress={() => handleDirectionPress('right')}
+              >
+                <MaterialIcons
+                  name='keyboard-arrow-right'
+                  size={32}
+                  color='white'
+                  xx
+                />
+              </TouchableOpacity>
 
-          {/* Botón Derecho */}
-          <Pressable
-            onPress={() => handleDirectionPress('right')}
-            style={({ pressed }) => [
-              styles.dpadButton,
-              styles.dpadRight,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <LinearGradient
-              colors={['#414151', '#2A2A36']}
-              style={styles.dpadButtonGradient}
-            >
-              <Ionicons name='chevron-forward' size={32} color='white' />
-            </LinearGradient>
-          </Pressable>
+              <TouchableOpacity
+                style={[
+                  styles.dirButton,
+                  styles.downButton,
+                  activeButton === 'down' && styles.activeButton,
+                ]}
+                activeOpacity={0.7}
+                onPress={() => handleDirectionPress('down')}
+              >
+                <MaterialIcons
+                  name='keyboard-arrow-down'
+                  size={32}
+                  color='white'
+                />
+              </TouchableOpacity>
 
-          {/* Botón Inferior */}
-          <Pressable
-            onPress={() => handleDirectionPress('down')}
-            style={({ pressed }) => [
-              styles.dpadButton,
-              styles.dpadDown,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <LinearGradient
-              colors={['#414151', '#2A2A36']}
-              style={styles.dpadButtonGradient}
-            >
-              <Ionicons name='chevron-down' size={32} color='white' />
-            </LinearGradient>
-          </Pressable>
+              <TouchableOpacity
+                style={[
+                  styles.dirButton,
+                  styles.leftButton,
+                  activeButton === 'left' && styles.activeButton,
+                ]}
+                activeOpacity={0.7}
+                onPress={() => handleDirectionPress('left')}
+              >
+                <MaterialIcons
+                  name='keyboard-arrow-left'
+                  size={32}
+                  color='white'
+                />
+              </TouchableOpacity>
+
+              {/* Botón central */}
+              <TouchableOpacity
+                style={[
+                  styles.centerButton,
+                  activeButton === 'enter' && styles.activeCenter,
+                ]}
+                activeOpacity={0.7}
+                onPress={handleCenterPress}
+              >
+                <View style={styles.centerButtonInner}>
+                  <Text style={styles.enterText}>OK</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </View>
 
@@ -184,7 +210,10 @@ export default function ControllerScreen({ navigation }) {
           <Ionicons name='help-circle' size={24} color='white' />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.bottomBarButton}>
+        <TouchableOpacity
+          style={styles.bottomBarButton}
+          onPress={openOptionScreen}
+        >
           <Ionicons name='grid' size={24} color='white' />
         </TouchableOpacity>
 
@@ -303,53 +332,161 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  dpadContainer: {
-    width: 230,
-    height: 230,
-    position: 'relative',
-  },
-  dpadButton: {
-    position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    overflow: 'hidden',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  dpadButtonGradient: {
-    width: '100%',
-    height: '100%',
+
+  // D-Pad corregido
+  dpadMainContainer: {
+    width: 280,
+    height: 280,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  dpadUp: {
-    top: 0,
-    left: 75,
+  dpadBaseOuter: {
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: '#2A2A35',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    borderWidth: 2,
+    borderColor: '#3A3A45',
   },
-  dpadLeft: {
-    top: 75,
-    left: 0,
+  dpadBaseInner: {
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: '#333340',
+    position: 'relative',
+    overflow: 'hidden',
   },
-  dpadCenter: {
-    top: 75,
-    left: 75,
+  // Líneas cruzadas formando X
+  crossLine1: {
+    position: 'absolute',
+    height: 8,
+    width: '140%',
+    top: '50%',
+    left: '-20%',
+    marginTop: -4,
+    transform: [{ rotate: '45deg' }],
+    zIndex: 1,
+    borderWidth: 1,
+    borderColor: '#1A1A25',
   },
-  dpadRight: {
-    top: 75,
-    left: 150,
+  crossLine2: {
+    position: 'absolute',
+    height: 8,
+    width: '140%',
+    top: '50%',
+    left: '-20%',
+    marginTop: -4,
+    transform: [{ rotate: '-45deg' }],
+    zIndex: 1,
+    borderWidth: 1,
+    borderColor: '#1A1A25',
   },
-  dpadDown: {
-    top: 150,
-    left: 75,
+  crossLine3: {
+    position: 'absolute',
+    height: 1,
+    width: '140%',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    top: '50%',
+    left: '-20%',
+    marginTop: 1,
+    transform: [{ rotate: '45deg' }],
+    zIndex: 2,
   },
-  buttonPressed: {
-    transform: [{ scale: 0.95 }],
-    opacity: 0.9,
+  crossLine4: {
+    position: 'absolute',
+    height: 1,
+    width: '140%',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    top: '50%',
+    left: '-20%',
+    marginTop: 1,
+    transform: [{ rotate: '-45deg' }],
+    zIndex: 2,
   },
+  // Botones direccionales
+  dirButton: {
+    position: 'absolute',
+    width: 70,
+    height: 70,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    elevation: 5,
+    borderColor: '#4A4A5A',
+  },
+  upButton: {
+    top: 10,
+    left: '50%',
+    marginLeft: -35,
+  },
+  rightButton: {
+    top: '50%',
+    right: 10,
+    marginTop: -35,
+  },
+  downButton: {
+    bottom: 10,
+    left: '50%',
+    marginLeft: -35,
+  },
+  leftButton: {
+    top: '50%',
+    left: 10,
+    marginTop: -35,
+  },
+  activeButton: {
+    backgroundColor: '#5F25FF',
+    borderColor: '#7445FF',
+  },
+  // Botón central
+  centerButton: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    width: 90,
+    height: 90,
+    marginLeft: -45,
+    marginTop: -45,
+    borderRadius: 45,
+    backgroundColor: '#2C2C3C',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 20,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 5,
+    borderWidth: 2,
+    borderColor: '#444455',
+  },
+  centerButtonInner: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#353545',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#4A4A5A',
+  },
+  enterText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  activeCenter: {
+    backgroundColor: '#5F25FF',
+    borderColor: '#7445FF',
+  },
+  // Barra inferior
   bottomBar: {
     flexDirection: 'row',
     justifyContent: 'space-around',

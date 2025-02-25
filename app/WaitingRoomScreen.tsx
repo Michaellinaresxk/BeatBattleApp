@@ -85,7 +85,6 @@ export default function WaitingRoomScreen({ route, navigation }) {
         if (prev <= 1) {
           clearInterval(interval);
 
-          // Usar router.push en lugar de navigation.navigate
           setTimeout(() => {
             router.push('/ControllerScreen');
           }, 500);

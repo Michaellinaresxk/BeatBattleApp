@@ -8,8 +8,10 @@ import {
   ScrollView,
   Modal,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import React from 'react';
 
 const { width, height } = Dimensions.get('window');
 
@@ -27,7 +29,9 @@ const MenuItem = ({ icon, title, onPress }) => {
   );
 };
 
-export default function MenuScreen({ navigation, visible = true, onClose }) {
+export default function MenuScreen({ visible = true, onClose }) {
+  const router = useRouter();
+
   const menuOptions = [
     {
       id: 'change',
@@ -35,7 +39,7 @@ export default function MenuScreen({ navigation, visible = true, onClose }) {
       title: 'Change game',
       onPress: () => {
         onClose && onClose();
-        navigation && navigation.navigate('GameSelectScreen');
+        router.push('/(controller)/GameSelectScreen');
       },
     },
     {
@@ -44,7 +48,7 @@ export default function MenuScreen({ navigation, visible = true, onClose }) {
       title: 'Add players',
       onPress: () => {
         onClose && onClose();
-        navigation && navigation.navigate('AddPlayersScreen');
+        router.push('/(controller)/AddPlayersScreen');
       },
     },
     {
@@ -53,7 +57,7 @@ export default function MenuScreen({ navigation, visible = true, onClose }) {
       title: 'Profile',
       onPress: () => {
         onClose && onClose();
-        navigation && navigation.navigate('ProfileScreen');
+        router.push('/(tabs)/profile');
       },
     },
     {
@@ -62,7 +66,7 @@ export default function MenuScreen({ navigation, visible = true, onClose }) {
       title: 'Get Help',
       onPress: () => {
         onClose && onClose();
-        navigation && navigation.navigate('HelpScreen');
+        router.push('/(tabs)/help');
       },
     },
     {
@@ -71,7 +75,7 @@ export default function MenuScreen({ navigation, visible = true, onClose }) {
       title: 'Leave session',
       onPress: () => {
         onClose && onClose();
-        navigation && navigation.navigate('HomeScreen');
+        router.push('/');
       },
     },
     {
@@ -95,6 +99,47 @@ export default function MenuScreen({ navigation, visible = true, onClose }) {
     },
   ];
 
+  // Crear dos columnas dividiendo los elementos en pares
+  const leftColumnItems = menuOptions.filter((_, index) => index % 2 === 0);
+  const rightColumnItems = menuOptions.filter((_, index) => index % 2 === 1);
+
+  const renderMenuContent = () => (
+    <>
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.closeButton}
+          onPress={() => (onClose ? onClose() : router.back())}
+        >
+          <Ionicons name='close' size={32} color='#FFFFFF' />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.menuColumnsContainer}>
+        <View style={styles.menuColumn}>
+          {leftColumnItems.map((option) => (
+            <MenuItem
+              key={option.id}
+              icon={option.icon}
+              title={option.title}
+              onPress={option.onPress}
+            />
+          ))}
+        </View>
+
+        <View style={styles.menuColumn}>
+          {rightColumnItems.map((option) => (
+            <MenuItem
+              key={option.id}
+              icon={option.icon}
+              title={option.title}
+              onPress={option.onPress}
+            />
+          ))}
+        </View>
+      </View>
+    </>
+  );
+
   if (visible) {
     // Versión de pantalla completa (no modal)
     return (
@@ -107,25 +152,7 @@ export default function MenuScreen({ navigation, visible = true, onClose }) {
           style={styles.background}
         />
 
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={() => navigation && navigation.goBack()}
-          >
-            <Ionicons name='close' size={32} color='#FFFFFF' />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.menuGrid}>
-          {menuOptions.map((option, index) => (
-            <MenuItem
-              key={option.id}
-              icon={option.icon}
-              title={option.title}
-              onPress={option.onPress}
-            />
-          ))}
-        </View>
+        {renderMenuContent()}
       </View>
     );
   } else {
@@ -143,22 +170,7 @@ export default function MenuScreen({ navigation, visible = true, onClose }) {
             style={styles.modalBackground}
           />
 
-          <View style={styles.header}>
-            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-              <Ionicons name='close' size={32} color='#FFFFFF' />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.menuGrid}>
-            {menuOptions.map((option, index) => (
-              <MenuItem
-                key={option.id}
-                icon={option.icon}
-                title={option.title}
-                onPress={option.onPress}
-              />
-            ))}
-          </View>
+          {renderMenuContent()}
         </View>
       </Modal>
     );
@@ -179,7 +191,7 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
   },
   modalBackground: {
@@ -205,13 +217,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  menuGrid: {
+  menuColumnsContainer: {
     width: '100%',
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
     paddingHorizontal: 10,
     paddingTop: 20,
+  },
+  menuColumn: {
+    flex: 1,
+    alignItems: 'center',
   },
   menuItem: {
     width: width / 2 - 20,
