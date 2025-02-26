@@ -86,7 +86,7 @@ export default function MenuScreen({ visible = true, onClose }) {
             colors={['#9AE01D', '#4D9DE0']}
             style={styles.logoGradient}
           >
-            {/* Logo simplificado */}
+            {/* Logo simplified */}
             <View style={styles.logoShape} />
           </LinearGradient>
         </View>
@@ -94,12 +94,10 @@ export default function MenuScreen({ visible = true, onClose }) {
       title: 'Get AirConsole Hero',
       onPress: () => {
         onClose && onClose();
-        // Aquí podrías abrir un enlace externo o navegar a una pantalla de compra
       },
     },
   ];
 
-  // Crear dos columnas dividiendo los elementos en pares
   const leftColumnItems = menuOptions.filter((_, index) => index % 2 === 0);
   const rightColumnItems = menuOptions.filter((_, index) => index % 2 === 1);
 
@@ -141,10 +139,9 @@ export default function MenuScreen({ visible = true, onClose }) {
   );
 
   if (visible) {
-    // Versión de pantalla completa (no modal)
+    // Full screen version (not modal)
     return (
       <View style={styles.container}>
-        {/* Fondo con degradado */}
         <LinearGradient
           colors={['#0F0F19', '#1F1F2F', '#0A0A14']}
           start={{ x: 0, y: 0 }}
@@ -156,7 +153,6 @@ export default function MenuScreen({ visible = true, onClose }) {
       </View>
     );
   } else {
-    // Versión modal (para usar como overlay)
     return (
       <Modal
         visible={visible}
