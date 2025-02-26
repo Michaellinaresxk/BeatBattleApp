@@ -38,7 +38,7 @@ type HomeScreenNavigationProp = NativeStackNavigationProp<
   'Home'
 >;
 
-// Partículas flotantes para efecto de ambiente de videojuego
+// Floating particles for videogame ambience effect
 const Particle = ({ index }: { index: number }) => {
   const size = 4 + Math.random() * 6;
   const initialX = Math.random() * width;
@@ -148,7 +148,7 @@ export default function HomeScreen() {
     };
   });
 
-  // Efecto de pulsación para el botón de inicio
+  // Pressing effect for the start button
   const buttonStyle = useAnimatedStyle(() => {
     return {
       transform: [{ scale: buttonScale.value }],
@@ -157,7 +157,7 @@ export default function HomeScreen() {
   });
 
   useEffect(() => {
-    // Animación del título flotante
+    // Floating title animation
     translateY.value = withRepeat(
       withTiming(15, {
         duration: 2000,
@@ -167,7 +167,7 @@ export default function HomeScreen() {
       true
     );
 
-    // Rotación de formas decorativas
+    // Rotation of decorative shapes
     rotate.value = withRepeat(
       withTiming(360, {
         duration: 25000,
@@ -177,7 +177,7 @@ export default function HomeScreen() {
       false
     );
 
-    // Escala de las formas decorativas
+    // Scale of decorative shapes
     scale.value = withRepeat(
       withTiming(1.15, {
         duration: 8000,
@@ -187,7 +187,7 @@ export default function HomeScreen() {
       true
     );
 
-    // Efecto pulsante para el botón
+    // Pulsing effect for the button
     pulseValue.value = withRepeat(
       withSequence(
         withTiming(1.2, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
@@ -197,7 +197,7 @@ export default function HomeScreen() {
       true
     );
 
-    // Efecto de hover para el botón
+    // Hover effect for the button
     buttonScale.value = withRepeat(
       withSequence(
         withTiming(1.05, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
@@ -208,12 +208,11 @@ export default function HomeScreen() {
     );
   }, [rotate, scale, translateY, buttonScale, pulseValue]);
 
-  // Generar array para las partículas
+  // Generate array for particles
   const particles = Array.from({ length: 30 }, (_, i) => i);
 
   return (
     <View style={styles.container}>
-      {/* Fondo con gradiente */}
       <LinearGradient
         colors={[
           'rgba(17, 24, 39, 1)',
@@ -223,7 +222,7 @@ export default function HomeScreen() {
         style={styles.background}
       />
 
-      {/* Imagen de fondo con efecto parallax */}
+      {/* Background image with parallax effect */}
       <Animated.View
         entering={FadeIn.duration(1000)}
         style={styles.backgroundImageContainer}
@@ -243,12 +242,12 @@ export default function HomeScreen() {
         />
       </Animated.View>
 
-      {/* Partículas para ambiente de videojuego */}
+      {/* Particles for video game environment */}
       {particles.map((i) => (
         <Particle key={i} index={i} />
       ))}
 
-      {/* Formas animadas */}
+      {/* Animated shapes */}
       <FloatingShape style={[styles.shape1, shape1Style]} />
       <FloatingShape style={[styles.shape2, shape2Style]} />
       <FloatingShape style={[styles.shape3, shape3Style]} />

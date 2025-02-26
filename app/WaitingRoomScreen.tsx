@@ -11,11 +11,12 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MOCK_PLAYERS } from '@/constants/MockPlayers';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
-const PlayerItem = ({ player, isCurrentUser }) => {
+const PlayerItem = ({ player, isCurrentUser, gameCode }) => {
+  console.log('WaitingRoomScreen - Código recibido:', gameCode);
   return (
     <View
       style={[styles.playerItem, isCurrentUser && styles.currentPlayerItem]}
@@ -55,22 +56,22 @@ const PlayerItem = ({ player, isCurrentUser }) => {
   );
 };
 
-export default function WaitingRoomScreen({ route, navigation }) {
+export default function WaitingRoomScreen() {
   const router = useRouter();
-  const gameCode = route && route.params ? route.params.gameCode : '123456';
+  const { gameCode } = useLocalSearchParams();
 
+  console.log('WaitingRoomScreen - Código recibido:', gameCode);
   const [players, setPlayers] = useState(MOCK_PLAYERS);
   const [isReady, setIsReady] = useState(true);
   const [countdown, setCountdown] = useState(null);
 
-  // Simular que todos los jugadores están listos después de 5 segundos
+  // Simulate that all players are ready after 5 seconds
   useEffect(() => {
     const timer = setTimeout(() => {
       setPlayers((prevPlayers) =>
         prevPlayers.map((player) => ({ ...player, isReady: true }))
       );
-
-      // Iniciar cuenta regresiva cuando todos estén listos
+      // Start countdown when everyone is ready
       startCountdown();
     }, 5000);
 
@@ -86,7 +87,10 @@ export default function WaitingRoomScreen({ route, navigation }) {
           clearInterval(interval);
 
           setTimeout(() => {
-            router.push('/ControllerScreen');
+            router.push({
+              pathname: '/QuizControllerScreen',
+              params: { gameCode },
+            });
           }, 500);
 
           return 0;
@@ -103,14 +107,14 @@ export default function WaitingRoomScreen({ route, navigation }) {
   const toggleReady = () => {
     setIsReady(!isReady);
 
-    // Actualizar el estado del jugador actual
+    // Update the status of the current player
     setPlayers((prevPlayers) =>
       prevPlayers.map((player) =>
         player.id === 1 ? { ...player, isReady: !isReady } : player
       )
     );
 
-    // Si el jugador se marca como listo y todos los demás ya están listos, iniciar la cuenta regresiva
+    // If the player is marked as ready and everyone else is ready, start the countdown.
     if (!isReady) {
       const otherPlayersReady = players
         .filter((player) => player.id !== 1)
@@ -120,19 +124,17 @@ export default function WaitingRoomScreen({ route, navigation }) {
         startCountdown();
       }
     } else {
-      // Si el jugador se desmarca como listo, cancelar la cuenta regresiva
+      // If the player is unchecked as ready, cancel the countdown.
       if (countdown !== null) {
         setCountdown(null);
       }
     }
   };
 
-  // Verificar si todos están listos
   const allReady = players.every((player) => player.isReady);
 
   return (
     <View style={styles.container}>
-      {/* Fondo con degradado */}
       <LinearGradient
         colors={['#0F0F19', '#1F1F2F', '#0A0A14']}
         start={{ x: 0, y: 0 }}
@@ -140,12 +142,11 @@ export default function WaitingRoomScreen({ route, navigation }) {
         style={styles.background}
       />
 
-      {/* Elementos decorativos */}
+      {/* Decorative elements */}
       <View style={styles.decorCircle1} />
       <View style={styles.decorCircle2} />
 
       <View style={styles.contentContainer}>
-        {/* Cabecera */}
         <View style={styles.header}>
           <View style={styles.gameCodeContainer}>
             <Text style={styles.gameCodeLabel}>CÓDIGO DE SALA</Text>
@@ -162,13 +163,11 @@ export default function WaitingRoomScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* Título de sección */}
         <View style={styles.sectionTitleContainer}>
           <Text style={styles.sectionTitle}>Jugadores</Text>
           <Text style={styles.playerCount}>{players.length}/8</Text>
         </View>
 
-        {/* Lista de jugadores */}
         <ScrollView
           style={styles.playersListContainer}
           contentContainerStyle={styles.playersList}
@@ -178,11 +177,12 @@ export default function WaitingRoomScreen({ route, navigation }) {
               key={player.id}
               player={player}
               isCurrentUser={player.id === 1}
+              gameCode={gameCode} // Pass gameCode as prop
             />
           ))}
         </ScrollView>
 
-        {/* Estado y botón de acción */}
+        {/* Status and action button */}
         <View style={styles.bottomContainer}>
           {countdown !== null ? (
             <View style={styles.countdownContainer}>

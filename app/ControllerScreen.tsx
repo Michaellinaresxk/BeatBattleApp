@@ -20,39 +20,36 @@ export default function ControllerScreen() {
   const [lastPressed, setLastPressed] = useState('');
   const [activeButton, setActiveButton] = useState(null);
 
-  // Manejar pulsaciones de botones direccionales con feedback
+  // Manage directional button presses with feedback
   const handleDirectionPress = (direction) => {
     setLastPressed(direction);
     setActiveButton(direction);
     Vibration.vibrate(30);
     console.log(`Presionado: ${direction}`);
 
-    // Resetear después de un tiempo
     setTimeout(() => {
       setActiveButton(null);
     }, 200);
   };
 
-  // Manejar pulsación del botón central
+  // Manage center button press
   const handleCenterPress = () => {
     setLastPressed('enter');
     setActiveButton('enter');
     Vibration.vibrate(50);
     console.log('Presionado: Enter');
-
-    // Resetear después de un tiempo
     setTimeout(() => {
       setActiveButton(null);
     }, 200);
   };
 
-  // Abrir menú
   const openMenu = () => {
-    router.push('/MenuScreen');
+    // router.push('/QuizControllerScreen');
+    console.log('yes');
   };
 
   const openOptionScreen = () => {
-    router.push('/MenuScreen');
+    router.push('/QuizControllerScreen');
   };
 
   return (
@@ -103,20 +100,20 @@ export default function ControllerScreen() {
         </View>
       )}
 
-      {/* Controlador direccional - Diseño 3D corregido */}
+      {/* Information about the last button pressed */}
       <View style={styles.controllerContainer}>
         {/* D-pad principal */}
         <View style={styles.dpadMainContainer}>
-          {/* Base con borde */}
+          {/* Base with border */}
           <View style={styles.dpadBaseOuter}>
             <View style={styles.dpadBaseInner}>
-              {/* Líneas cruzadas */}
+              {/* Crossed lines */}
               <View style={styles.crossLine1} />
               <View style={styles.crossLine2} />
               <View style={styles.crossLine3} />
               <View style={styles.crossLine4} />
 
-              {/* Botones direccionales */}
+              {/* Directional buttons */}
               <TouchableOpacity
                 style={[
                   styles.dirButton,
@@ -200,7 +197,7 @@ export default function ControllerScreen() {
         </View>
       </View>
 
-      {/* Barra de botones inferiores */}
+      {/* Bottom button bar */}
       <View style={styles.bottomBar}>
         <TouchableOpacity style={styles.bottomBarButton}>
           <Ionicons name='search' size={24} color='white' />
