@@ -39,7 +39,7 @@ export default function MenuScreen({ visible = true, onClose }) {
       title: 'Change game',
       onPress: () => {
         onClose && onClose();
-        router.push('/(controller)/GameSelectScreen');
+        // router.push('/(controller)/GameSelectScreen');
       },
     },
     {
@@ -48,7 +48,7 @@ export default function MenuScreen({ visible = true, onClose }) {
       title: 'Add players',
       onPress: () => {
         onClose && onClose();
-        router.push('/(controller)/AddPlayersScreen');
+        // router.push('/(controller)/AddPlayersScreen');
       },
     },
     {
@@ -57,7 +57,7 @@ export default function MenuScreen({ visible = true, onClose }) {
       title: 'Profile',
       onPress: () => {
         onClose && onClose();
-        router.push('/(tabs)/profile');
+        // router.push('/(tabs)/profile');
       },
     },
     {
@@ -66,7 +66,7 @@ export default function MenuScreen({ visible = true, onClose }) {
       title: 'Get Help',
       onPress: () => {
         onClose && onClose();
-        router.push('/(tabs)/help');
+        // router.push('/(tabs)/help');
       },
     },
     {

@@ -45,10 +45,7 @@ export default function RootLayout() {
           name='ControllerScreen'
           options={{ headerShown: false }}
         />
-        <Stack.Screen
-          name='QuizControllerScreen'
-          options={{ headerShown: false }}
-        />
+        <Stack.Screen name='QuizViewScreen' options={{ headerShown: false }} />
         <Stack.Screen name='+not-found' />
       </Stack>
       <StatusBar style='auto' />
