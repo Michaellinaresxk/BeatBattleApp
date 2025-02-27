@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   Dimensions,
   TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -65,8 +67,10 @@ export default function WaitingRoomScreen() {
   const router = useRouter();
   const { gameCode } = useLocalSearchParams();
   const [countdown, setCountdown] = useState(null);
+  const [navigating, setNavigating] = useState(false);
+  const [debugInfo, setDebugInfo] = useState('');
 
-  // Conectar al socket con el código de juego
+  // Connect to socket with the game code
   const {
     socket,
     connected,
@@ -75,84 +79,192 @@ export default function WaitingRoomScreen() {
     isReady,
     toggleReady,
     leaveRoom: socketLeaveRoom,
+    retryConnection,
+    serverUrl,
   } = useSocketConnection(gameCode as string);
 
-  // Estado local de jugadores que podemos actualizar
+  // Local state for players that we can update
   const [players, setPlayers] = useState([]);
 
-  // Actualizar jugadores cuando socketPlayers cambia
+  // Update players when socketPlayers changes
   useEffect(() => {
     if (socketPlayers && socketPlayers.length > 0) {
+      console.log(
+        '⚠️ Updating players from socketPlayers:',
+        socketPlayers.length
+      );
       setPlayers(socketPlayers);
     }
   }, [socketPlayers]);
 
-  // Manejar eventos del socket
+  // Handle socket events
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) {
+      console.log('⚠️ No socket available yet');
+      return;
+    }
 
-    // Manejar evento de jugador unido
-    socket.on('player_joined', (player) => {
-      console.log('Jugador unido:', player);
-      setPlayers((prev) => [...prev, player]);
-    });
+    console.log('⚠️ Setting up socket event handlers');
 
-    // Manejar evento de jugador que abandona
-    socket.on('player_left', (data) => {
-      console.log('Jugador abandonó:', data);
+    // Handle player joined event
+    const handlePlayerJoined = (player) => {
+      console.log('Player joined:', player);
+      setPlayers((prev) => {
+        // Check if player already exists
+        const exists = prev.some((p) => p.id === player.id);
+        if (exists) {
+          console.log('⚠️ Player already exists in state:', player.nickname);
+          return prev;
+        }
+        return [...prev, player];
+      });
+    };
+
+    // Handle player left event
+    const handlePlayerLeft = (data) => {
+      console.log('Player left:', data);
       setPlayers((prev) => prev.filter((p) => p.id !== data.playerId));
-    });
+    };
 
-    // Manejar evento de controlador unido
-    socket.on('controller_joined', (data) => {
-      if (!Array.isArray(data)) {
-        // Un solo controlador se unió
-        console.log('Controlador unido:', data);
-        setPlayers((prev) => [
-          ...prev,
-          {
-            id: data.id,
-            nickname: data.nickname,
-            isReady: false,
-          },
-        ]);
+    // Handle controller joined event with improved handling
+    const handleControllerJoined = (data) => {
+      console.log('⚠️ Controller joined event received:', data);
+
+      // If we received a single player object
+      if (
+        data &&
+        data.id &&
+        data.nickname &&
+        !data.players &&
+        !data.controllers
+      ) {
+        console.log('⚠️ Single controller joined:', data.nickname);
+        setPlayers((prev) => {
+          // Check if controller already exists
+          const exists = prev.some((p) => p.id === data.id);
+          if (exists) {
+            console.log(
+              '⚠️ Controller already exists in state:',
+              data.nickname
+            );
+            return prev;
+          }
+          return [
+            ...prev,
+            {
+              id: data.id,
+              nickname: data.nickname,
+              isReady: false,
+            },
+          ];
+        });
+        return;
       }
-    });
 
-    // Manejar evento de controlador que abandona
-    socket.on('controller_left', (data) => {
-      console.log('Controlador abandonó:', data);
+      // If we received the full room data
+      if (data.controllers || data.players) {
+        let newPlayers = [];
+
+        // Process controllers if available
+        if (data.controllers && Array.isArray(data.controllers)) {
+          console.log('⚠️ Controllers found:', data.controllers.length);
+          newPlayers = data.controllers.map((controller) => ({
+            ...controller,
+            id:
+              controller.id ||
+              controller.playerId ||
+              `controller-${Math.random().toString(36).substr(2, 9)}`,
+          }));
+        }
+
+        // Add players if available
+        if (data.players && Array.isArray(data.players)) {
+          console.log('⚠️ Players found:', data.players.length);
+          newPlayers = [
+            ...newPlayers,
+            ...data.players.map((player) => ({
+              ...player,
+              id:
+                player.id ||
+                player.playerId ||
+                `player-${Math.random().toString(36).substr(2, 9)}`,
+            })),
+          ];
+        }
+
+        console.log('⚠️ Setting player list, count:', newPlayers.length);
+        setPlayers(newPlayers);
+      }
+    };
+
+    // Handle controller left event
+    const handleControllerLeft = (data) => {
+      console.log('Controller left:', data);
       setPlayers((prev) => prev.filter((p) => p.id !== data.id));
-    });
+    };
 
-    // Manejar evento de inicio de cuenta regresiva
-    socket.on('countdown_started', (data) => {
-      console.log('⚠️ Countdown started event received in WaitingRoom:', data);
+    // Handle countdown started event
+    const handleCountdownStarted = (data) => {
+      console.log('⚠️ Countdown started event received:', data);
       if (data && data.seconds) {
         setCountdown(data.seconds);
       }
-    });
+    };
 
-    // Manejar evento de inicio de juego
-    socket.on('game_started', (data) => {
-      console.log('⚠️⚠️⚠️ GAME STARTED EVENT RECEIVED IN EXPO:', data);
-      console.log('⚠️⚠️⚠️ Current route:', router.pathname);
+    // Handle game started event with improved navigation
+    const handleGameStarted = (data) => {
+      console.log('⚠️⚠️⚠️ GAME STARTED EVENT RECEIVED:', data);
 
-      // Intentar navegar directamente
-      console.log('⚠️⚠️⚠️ Attempting to navigate to QuizControllerScreen');
-      router.push({
-        pathname: '/QuizControllerScreen',
-        params: { gameCode },
-      });
-    });
+      // Prevent multiple navigation attempts
+      if (navigating) {
+        console.log('⚠️ Already navigating, ignoring duplicate event');
+        return;
+      }
 
-    // Manejar actualizaciones del estado "listo"
-    socket.on('player_ready', (data) => {
-      console.log('Estado listo del jugador actualizado:', data);
+      setNavigating(true);
+
+      try {
+        console.log(
+          '⚠️ Navigating to QuizControllerScreen with gameCode:',
+          gameCode
+        );
+        // Add a small delay to ensure state updates complete
+        setTimeout(() => {
+          router.push({
+            pathname: '/QuizControllerScreen',
+            params: { gameCode },
+          });
+        }, 100);
+      } catch (err) {
+        console.error('⚠️ Navigation error:', err);
+        setNavigating(false);
+
+        // Try again with a longer delay
+        setTimeout(() => {
+          try {
+            router.push({
+              pathname: '/QuizControllerScreen',
+              params: { gameCode },
+            });
+          } catch (secondErr) {
+            console.error('⚠️ Second navigation attempt failed:', secondErr);
+            Alert.alert(
+              'Navigation Error',
+              'Failed to navigate to game screen. Please try again.'
+            );
+          }
+        }, 1000);
+      }
+    };
+
+    // Handle player ready event
+    const handlePlayerReady = (data) => {
+      console.log('Player ready state updated:', data);
       setPlayers((prev) => {
         return prev.map((p) => {
           if (p.id === data.playerId) {
-            console.log('⚠️ Actualizando estado listo del jugador:', {
+            console.log('⚠️ Updating player ready state:', {
+              player: p.nickname,
               before: p.isReady,
               after: data.isReady,
             });
@@ -161,37 +273,60 @@ export default function WaitingRoomScreen() {
           return p;
         });
       });
+    };
 
-      // Si es el jugador actual, asegurarnos de que el botón refleje el estado
-      if (socket.id === data.playerId) {
-        console.log('⚠️ Actualizando estado listo propio:', data.isReady);
-      }
+    // Register all event handlers
+    socket.on('player_joined', handlePlayerJoined);
+    socket.on('player_left', handlePlayerLeft);
+    socket.on('controller_joined', handleControllerJoined);
+    socket.on('controller_left', handleControllerLeft);
+    socket.on('countdown_started', handleCountdownStarted);
+    socket.on('game_started', handleGameStarted);
+    socket.on('player_ready', handlePlayerReady);
+
+    // Add debug info event
+    socket.on('debug_info', (info) => {
+      console.log('⚠️ Debug info received:', info);
+      setDebugInfo(JSON.stringify(info, null, 2));
     });
 
-    return () => {
-      socket.off('player_joined');
-      socket.off('player_left');
-      socket.off('controller_joined');
-      socket.off('controller_left');
-      socket.off('countdown_started');
-      socket.off('game_started');
-      socket.off('player_ready');
-    };
-  }, [socket, router, gameCode]);
+    // Debug log that we've set up all handlers
+    console.log('⚠️ All socket event handlers registered');
 
-  const handleLeaveRoom = () => {
+    // Clean up event handlers on unmount
+    return () => {
+      console.log('⚠️ Cleaning up socket event handlers');
+      socket.off('player_joined', handlePlayerJoined);
+      socket.off('player_left', handlePlayerLeft);
+      socket.off('controller_joined', handleControllerJoined);
+      socket.off('controller_left', handleControllerLeft);
+      socket.off('countdown_started', handleCountdownStarted);
+      socket.off('game_started', handleGameStarted);
+      socket.off('player_ready', handlePlayerReady);
+      socket.off('debug_info');
+    };
+  }, [socket, router, gameCode, navigating]);
+
+  const handleLeaveRoom = useCallback(() => {
     socketLeaveRoom();
     router.push('/EntryCodeScreen');
-  };
+  }, [socketLeaveRoom, router]);
 
-  const handleToggleReady = () => {
-    toggleReady();
-  };
+  const handleToggleReady = useCallback(() => {
+    if (toggleReady) {
+      console.log('⚠️ Toggling ready state, current state:', isReady);
+      toggleReady();
+    } else {
+      console.error('toggleReady function not available');
+      Alert.alert('Error', 'Cannot toggle ready state. Please try again.');
+    }
+  }, [toggleReady, isReady]);
 
-  // Encontrar jugador actual (este dispositivo)
+  // Find current player (this device)
   const currentPlayer = players.find((p) => socket && p.id === socket.id);
   const allReady = players.length > 0 && players.every((p) => p.isReady);
 
+  // Render error state
   if (error) {
     return (
       <View style={styles.container}>
@@ -203,9 +338,26 @@ export default function WaitingRoomScreen() {
         />
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Error: {error}</Text>
+          <Text style={styles.errorDetailText}>
+            Server: {serverUrl}
+            {'\n'}
+            Game Code: {gameCode}
+          </Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => {
+              console.log('⚠️ Retrying connection');
+              retryConnection();
+            }}
+          >
+            <Text style={styles.retryButtonText}>Intentar nuevamente</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.leaveButton}
-            onPress={() => router.push('/EntryCodeScreen')}
+            onPress={() => {
+              console.log('⚠️ Returning to entry screen');
+              router.push('/EntryCodeScreen');
+            }}
           >
             <LinearGradient
               colors={['#F55353', '#B22525']}
@@ -219,6 +371,7 @@ export default function WaitingRoomScreen() {
     );
   }
 
+  // Render loading state
   if (!connected) {
     return (
       <View style={styles.container}>
@@ -229,12 +382,19 @@ export default function WaitingRoomScreen() {
           style={styles.background}
         />
         <View style={styles.loadingContainer}>
+          <ActivityIndicator size='large' color='#5F25FF' />
           <Text style={styles.loadingText}>Conectando al servidor...</Text>
+          <Text style={styles.loadingDetailText}>
+            Server: {serverUrl}
+            {'\n'}
+            Game Code: {gameCode}
+          </Text>
         </View>
       </View>
     );
   }
 
+  // Render main waiting room UI
   return (
     <View style={styles.container}>
       <LinearGradient
@@ -244,7 +404,7 @@ export default function WaitingRoomScreen() {
         style={styles.background}
       />
 
-      {/* Elementos decorativos */}
+      {/* Decorative elements */}
       <View style={styles.decorCircle1} />
       <View style={styles.decorCircle2} />
 
@@ -279,7 +439,7 @@ export default function WaitingRoomScreen() {
         >
           {players.map((player, index) => (
             <PlayerItem
-              key={player.id || player.playerId || `player-${index}`} // Asegurar una key única siempre
+              key={player.id || `player-${index}`}
               player={player}
               isCurrentUser={
                 socket &&
@@ -287,9 +447,26 @@ export default function WaitingRoomScreen() {
               }
             />
           ))}
+
+          {players.length === 0 && (
+            <View style={styles.noPlayersContainer}>
+              <Text style={styles.noPlayersText}>
+                Esperando a que se unan jugadores...
+              </Text>
+            </View>
+          )}
         </ScrollView>
 
-        {/* Estado y botón de acción */}
+        {/* Countdown display if active */}
+        {countdown !== null && (
+          <View style={styles.countdownContainer}>
+            <Text style={styles.countdownText}>
+              El juego comienza en: {countdown}
+            </Text>
+          </View>
+        )}
+
+        {/* Status and action button */}
         <View style={styles.bottomContainer}>
           <View style={styles.statusContainer}>
             {allReady ? (
@@ -317,6 +494,22 @@ export default function WaitingRoomScreen() {
             </LinearGradient>
           </TouchableOpacity>
         </View>
+
+        {/* Connection info for debugging */}
+        {__DEV__ && (
+          <View style={styles.debugContainer}>
+            <Text style={styles.debugText}>
+              Connected to: {serverUrl}
+              {'\n'}
+              Socket ID: {socket?.id || 'N/A'}
+              {'\n'}
+              Players: {players.length}
+            </Text>
+            {debugInfo && (
+              <Text style={styles.debugText}>Debug Info: {debugInfo}</Text>
+            )}
+          </View>
+        )}
       </View>
     </View>
   );
@@ -393,6 +586,18 @@ const styles = StyleSheet.create({
   leaveButtonText: {
     color: '#ffffff',
     fontSize: 14,
+    fontWeight: 'bold',
+  },
+  retryButton: {
+    backgroundColor: 'rgba(95, 37, 255, 0.7)',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginBottom: 15,
+  },
+  retryButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
     fontWeight: 'bold',
   },
   sectionTitleContainer: {
@@ -544,13 +749,52 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
+  errorDetailText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
   },
   loadingText: {
     color: 'white',
     fontSize: 18,
+    marginTop: 15,
+    marginBottom: 10,
+  },
+  loadingDetailText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  noPlayersContainer: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(40, 40, 60, 0.2)',
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+    marginTop: 20,
+  },
+  noPlayersText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  debugContainer: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: 8,
+  },
+  debugText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 10,
   },
 });
