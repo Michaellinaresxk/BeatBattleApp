@@ -10,13 +10,18 @@ import {
   ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MOCK_PLAYERS } from '@/constants/MockPlayers';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSocketConnection } from '@/hooks/useSocketConnection';
 
 const { width } = Dimensions.get('window');
 
-const PlayerItem = ({ player, isCurrentUser, gameCode }) => {
-  console.log('WaitingRoomScreen - Código recibido:', gameCode);
+const PlayerItem = ({ player, isCurrentUser }) => {
+  const playerId = player.id || player.playerId || '';
+  const playerName = player.nickname || player.name || 'Jugador';
+  const playerInitial = playerName.charAt(0).toUpperCase();
+  const isPlayerHost = !!player.isHost;
+  const isPlayerReady = !!player.isReady;
+
   return (
     <View
       style={[styles.playerItem, isCurrentUser && styles.currentPlayerItem]}
@@ -30,24 +35,24 @@ const PlayerItem = ({ player, isCurrentUser, gameCode }) => {
         style={styles.playerGradient}
       >
         <View style={styles.playerAvatar}>
-          <Text style={styles.playerInitial}>{player.name.charAt(0)}</Text>
+          <Text style={styles.playerInitial}>{playerInitial}</Text>
         </View>
 
         <View style={styles.playerInfo}>
           <View style={styles.playerNameContainer}>
             <Text style={styles.playerName}>
-              {player.name} {player.isHost && '(Host)'}
+              {playerName} {isPlayerHost && '(Host)'}
             </Text>
           </View>
 
           <View
             style={[
               styles.statusIndicator,
-              player.isReady ? styles.readyStatus : styles.waitingStatus,
+              isPlayerReady ? styles.readyStatus : styles.waitingStatus,
             ]}
           >
             <Text style={styles.statusText}>
-              {player.isReady ? 'Listo' : 'Esperando...'}
+              {isPlayerReady ? 'Listo' : 'Esperando...'}
             </Text>
           </View>
         </View>
@@ -59,79 +64,176 @@ const PlayerItem = ({ player, isCurrentUser, gameCode }) => {
 export default function WaitingRoomScreen() {
   const router = useRouter();
   const { gameCode } = useLocalSearchParams();
-
-  console.log('WaitingRoomScreen - Código recibido:', gameCode);
-  const [players, setPlayers] = useState(MOCK_PLAYERS);
-  const [isReady, setIsReady] = useState(true);
   const [countdown, setCountdown] = useState(null);
 
-  // Simulate that all players are ready after 5 seconds
+  // Conectar al socket con el código de juego
+  const {
+    socket,
+    connected,
+    error,
+    players: socketPlayers,
+    isReady,
+    toggleReady,
+    leaveRoom: socketLeaveRoom,
+  } = useSocketConnection(gameCode as string);
+
+  // Estado local de jugadores que podemos actualizar
+  const [players, setPlayers] = useState([]);
+
+  // Actualizar jugadores cuando socketPlayers cambia
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setPlayers((prevPlayers) =>
-        prevPlayers.map((player) => ({ ...player, isReady: true }))
-      );
-      // Start countdown when everyone is ready
-      startCountdown();
-    }, 5000);
+    if (socketPlayers && socketPlayers.length > 0) {
+      setPlayers(socketPlayers);
+    }
+  }, [socketPlayers]);
 
-    return () => clearTimeout(timer);
-  }, []);
+  // Manejar eventos del socket
+  useEffect(() => {
+    if (!socket) return;
 
-  const startCountdown = () => {
-    setCountdown(5);
+    // Manejar evento de jugador unido
+    socket.on('player_joined', (player) => {
+      console.log('Jugador unido:', player);
+      setPlayers((prev) => [...prev, player]);
+    });
 
-    const interval = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
+    // Manejar evento de jugador que abandona
+    socket.on('player_left', (data) => {
+      console.log('Jugador abandonó:', data);
+      setPlayers((prev) => prev.filter((p) => p.id !== data.playerId));
+    });
 
-          setTimeout(() => {
-            router.push({
-              pathname: '/QuizControllerScreen',
-              params: { gameCode },
-            });
-          }, 500);
+    // Manejar evento de controlador unido
+    socket.on('controller_joined', (data) => {
+      if (!Array.isArray(data)) {
+        // Un solo controlador se unió
+        console.log('Controlador unido:', data);
+        setPlayers((prev) => [
+          ...prev,
+          {
+            id: data.id,
+            nickname: data.nickname,
+            isReady: false,
+          },
+        ]);
+      }
+    });
 
-          return 0;
-        }
-        return prev - 1;
+    // Manejar evento de controlador que abandona
+    socket.on('controller_left', (data) => {
+      console.log('Controlador abandonó:', data);
+      setPlayers((prev) => prev.filter((p) => p.id !== data.id));
+    });
+
+    // Manejar evento de inicio de cuenta regresiva
+    socket.on('countdown_started', (data) => {
+      console.log('⚠️ Countdown started event received in WaitingRoom:', data);
+      if (data && data.seconds) {
+        setCountdown(data.seconds);
+      }
+    });
+
+    // Manejar evento de inicio de juego
+    socket.on('game_started', (data) => {
+      console.log('⚠️⚠️⚠️ GAME STARTED EVENT RECEIVED IN EXPO:', data);
+      console.log('⚠️⚠️⚠️ Current route:', router.pathname);
+
+      // Intentar navegar directamente
+      console.log('⚠️⚠️⚠️ Attempting to navigate to QuizControllerScreen');
+      router.push({
+        pathname: '/QuizControllerScreen',
+        params: { gameCode },
       });
-    }, 1000);
-  };
+    });
 
-  const leaveRoom = () => {
+    // Manejar actualizaciones del estado "listo"
+    socket.on('player_ready', (data) => {
+      console.log('Estado listo del jugador actualizado:', data);
+      setPlayers((prev) => {
+        return prev.map((p) => {
+          if (p.id === data.playerId) {
+            console.log('⚠️ Actualizando estado listo del jugador:', {
+              before: p.isReady,
+              after: data.isReady,
+            });
+            return { ...p, isReady: data.isReady };
+          }
+          return p;
+        });
+      });
+
+      // Si es el jugador actual, asegurarnos de que el botón refleje el estado
+      if (socket.id === data.playerId) {
+        console.log('⚠️ Actualizando estado listo propio:', data.isReady);
+      }
+    });
+
+    return () => {
+      socket.off('player_joined');
+      socket.off('player_left');
+      socket.off('controller_joined');
+      socket.off('controller_left');
+      socket.off('countdown_started');
+      socket.off('game_started');
+      socket.off('player_ready');
+    };
+  }, [socket, router, gameCode]);
+
+  const handleLeaveRoom = () => {
+    socketLeaveRoom();
     router.push('/EntryCodeScreen');
   };
 
-  const toggleReady = () => {
-    setIsReady(!isReady);
-
-    // Update the status of the current player
-    setPlayers((prevPlayers) =>
-      prevPlayers.map((player) =>
-        player.id === 1 ? { ...player, isReady: !isReady } : player
-      )
-    );
-
-    // If the player is marked as ready and everyone else is ready, start the countdown.
-    if (!isReady) {
-      const otherPlayersReady = players
-        .filter((player) => player.id !== 1)
-        .every((player) => player.isReady);
-
-      if (otherPlayersReady) {
-        startCountdown();
-      }
-    } else {
-      // If the player is unchecked as ready, cancel the countdown.
-      if (countdown !== null) {
-        setCountdown(null);
-      }
-    }
+  const handleToggleReady = () => {
+    toggleReady();
   };
 
-  const allReady = players.every((player) => player.isReady);
+  // Encontrar jugador actual (este dispositivo)
+  const currentPlayer = players.find((p) => socket && p.id === socket.id);
+  const allReady = players.length > 0 && players.every((p) => p.isReady);
+
+  if (error) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient
+          colors={['#0F0F19', '#1F1F2F', '#0A0A14']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.background}
+        />
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Error: {error}</Text>
+          <TouchableOpacity
+            style={styles.leaveButton}
+            onPress={() => router.push('/EntryCodeScreen')}
+          >
+            <LinearGradient
+              colors={['#F55353', '#B22525']}
+              style={styles.leaveButtonGradient}
+            >
+              <Text style={styles.leaveButtonText}>Volver</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  if (!connected) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient
+          colors={['#0F0F19', '#1F1F2F', '#0A0A14']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.background}
+        />
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Conectando al servidor...</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -142,7 +244,7 @@ export default function WaitingRoomScreen() {
         style={styles.background}
       />
 
-      {/* Decorative elements */}
+      {/* Elementos decorativos */}
       <View style={styles.decorCircle1} />
       <View style={styles.decorCircle2} />
 
@@ -153,7 +255,10 @@ export default function WaitingRoomScreen() {
             <Text style={styles.gameCodeValue}>{gameCode}</Text>
           </View>
 
-          <TouchableOpacity style={styles.leaveButton} onPress={leaveRoom}>
+          <TouchableOpacity
+            style={styles.leaveButton}
+            onPress={handleLeaveRoom}
+          >
             <LinearGradient
               colors={['#F55353', '#B22525']}
               style={styles.leaveButtonGradient}
@@ -172,41 +277,35 @@ export default function WaitingRoomScreen() {
           style={styles.playersListContainer}
           contentContainerStyle={styles.playersList}
         >
-          {players.map((player) => (
+          {players.map((player, index) => (
             <PlayerItem
-              key={player.id}
+              key={player.id || player.playerId || `player-${index}`} // Asegurar una key única siempre
               player={player}
-              isCurrentUser={player.id === 1}
-              gameCode={gameCode} // Pass gameCode as prop
+              isCurrentUser={
+                socket &&
+                (player.id === socket.id || player.playerId === socket.id)
+              }
             />
           ))}
         </ScrollView>
 
-        {/* Status and action button */}
+        {/* Estado y botón de acción */}
         <View style={styles.bottomContainer}>
-          {countdown !== null ? (
-            <View style={styles.countdownContainer}>
-              <Text style={styles.countdownText}>
-                Iniciando en {countdown}...
+          <View style={styles.statusContainer}>
+            {allReady ? (
+              <Text style={styles.allReadyText}>
+                Todos los jugadores están listos
               </Text>
-            </View>
-          ) : (
-            <View style={styles.statusContainer}>
-              {allReady ? (
-                <Text style={styles.allReadyText}>
-                  Todos los jugadores están listos
-                </Text>
-              ) : (
-                <Text style={styles.waitingOthersText}>
-                  Esperando a que todos estén listos...
-                </Text>
-              )}
-            </View>
-          )}
+            ) : (
+              <Text style={styles.waitingOthersText}>
+                Esperando a que todos estén listos...
+              </Text>
+            )}
+          </View>
 
           <TouchableOpacity
             style={[styles.readyButton, isReady && styles.readyButtonActive]}
-            onPress={toggleReady}
+            onPress={handleToggleReady}
           >
             <LinearGradient
               colors={isReady ? ['#4caf50', '#2e7d32'] : ['#414151', '#2A2A36']}
@@ -432,5 +531,26 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    color: '#F55353',
+    fontSize: 18,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: 'white',
+    fontSize: 18,
   },
 });

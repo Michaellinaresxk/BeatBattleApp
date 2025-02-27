@@ -8,59 +8,85 @@ import {
   StyleSheet,
   Dimensions,
   Vibration,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSocketConnection } from '@/hooks/useSocketConnection';
 import { QuestionDisplay } from '@/components/QuestionDisplay';
 import { AnswerOptions } from '@/components/AnswerOptions';
 
 const { width } = Dimensions.get('window');
 
-export default function QuizControllerScreen() {
+export default function QuizViewScreen() {
+  const router = useRouter();
   const { gameCode } = useLocalSearchParams();
-  const [selectedOption, setSelectedOption] = useState(null);
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState(30);
   const [question, setQuestion] = useState({
-    text: '¿Cuál es la capital de Francia?',
+    text: 'Waiting for the first question...',
     options: {
-      A: 'Londres',
-      B: 'Madrid',
-      C: 'París',
-      D: 'Berlín',
+      A: '...',
+      B: '...',
+      C: '...',
+      D: '...',
     },
   });
-  const [answerResult, setAnswerResult] = useState(null);
+  const [answerResult, setAnswerResult] = useState<string | null>(null);
   const [questionEnded, setQuestionEnded] = useState(false);
+  const [gameEnded, setGameEnded] = useState(false);
 
-  const socket = useSocketConnection(gameCode as string);
+  const { socket, connected, error } = useSocketConnection(gameCode as string);
 
   useEffect(() => {
     if (!socket) return;
 
     socket.on('new_question', (data) => {
-      console.log('Nueva pregunta recibida:', data);
-      setQuestion(data.question);
+      console.log('New question received:', data);
+      setQuestion({
+        text: data.question.question,
+        options: data.options,
+      });
       setTimeLeft(data.timeLimit);
       setSelectedOption(null);
       setAnswerResult(null);
       setQuestionEnded(false);
     });
 
-    socket.on('timer_update', (data) => {
-      setTimeLeft(data.timeLeft);
+    socket.on('timer_update', (timeRemaining) => {
+      setTimeLeft(timeRemaining);
     });
 
     socket.on('question_ended', (data) => {
-      console.log('Pregunta terminada:', data);
+      console.log('Question ended:', data);
       setQuestionEnded(true);
+      // If user didn't answer, show the correct answer
+      if (selectedOption === null) {
+        setAnswerResult('timeout');
+        Vibration.vibrate(150);
+      }
     });
 
     socket.on('answer_result', (data) => {
-      console.log('Resultado de respuesta:', data);
+      console.log('Answer result:', data);
       setAnswerResult(data.correct ? 'correct' : 'incorrect');
       Vibration.vibrate(data.correct ? [0, 70, 50, 70] : 150);
+    });
+
+    socket.on('game_ended', (data) => {
+      console.log('Game ended:', data);
+      setGameEnded(true);
+      Alert.alert(
+        'Game Over',
+        'The quiz has ended. Check the main screen for results!',
+        [
+          {
+            text: 'OK',
+            onPress: () => router.push('/EntryCodeScreen'),
+          },
+        ]
+      );
     });
 
     return () => {
@@ -68,10 +94,11 @@ export default function QuizControllerScreen() {
       socket.off('timer_update');
       socket.off('question_ended');
       socket.off('answer_result');
+      socket.off('game_ended');
     };
-  }, [socket]);
+  }, [socket, router, selectedOption]);
 
-  const handleOptionSelect = (option) => {
+  const handleOptionSelect = (option: string) => {
     if (selectedOption === null && !questionEnded && timeLeft > 0) {
       setSelectedOption(option);
       Vibration.vibrate(30);
@@ -94,6 +121,55 @@ export default function QuizControllerScreen() {
     }
   };
 
+  if (!connected || error) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient
+          colors={['#0F0F19', '#1F1F2F', '#0A0A14']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.background}
+        />
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>
+            {error ? `Error: ${error}` : 'Connecting to server...'}
+          </Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.push('/EntryCodeScreen')}
+          >
+            <Text style={styles.backButtonText}>Back to Entry</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  if (gameEnded) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient
+          colors={['#0F0F19', '#1F1F2F', '#0A0A14']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.background}
+        />
+        <View style={styles.gameEndedContainer}>
+          <Text style={styles.gameEndedText}>Game Over!</Text>
+          <Text style={styles.gameEndedSubtext}>
+            Check the main screen for results
+          </Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.push('/EntryCodeScreen')}
+          >
+            <Text style={styles.backButtonText}>Back to Entry</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <LinearGradient
@@ -105,7 +181,7 @@ export default function QuizControllerScreen() {
 
       <View style={styles.header}>
         <View style={styles.roomInfoContainer}>
-          <Text style={styles.roomCodeLabel}>SALA</Text>
+          <Text style={styles.roomCodeLabel}>ROOM</Text>
           <Text style={styles.roomCode}>{gameCode}</Text>
         </View>
 
@@ -130,11 +206,13 @@ export default function QuizControllerScreen() {
       {selectedOption && (
         <View style={styles.statusContainer}>
           {answerResult === null ? (
-            <Text style={styles.waitingText}>Esperando resultado...</Text>
+            <Text style={styles.waitingText}>Waiting for result...</Text>
           ) : answerResult === 'correct' ? (
-            <Text style={styles.correctText}>¡Respuesta Correcta!</Text>
+            <Text style={styles.correctText}>Correct Answer!</Text>
+          ) : answerResult === 'timeout' ? (
+            <Text style={styles.timeoutText}>Time's up!</Text>
           ) : (
-            <Text style={styles.incorrectText}>Respuesta Incorrecta</Text>
+            <Text style={styles.incorrectText}>Incorrect Answer</Text>
           )}
         </View>
       )}
@@ -148,7 +226,7 @@ export default function QuizControllerScreen() {
             colors={['#5F25FF', '#4A6BF5']}
             style={styles.nextButtonGradient}
           >
-            <Text style={styles.nextButtonText}>Siguiente Pregunta</Text>
+            <Text style={styles.nextButtonText}>Next Question</Text>
             <Ionicons name='arrow-forward' size={20} color='white' />
           </LinearGradient>
         </TouchableOpacity>
@@ -209,74 +287,6 @@ const styles = StyleSheet.create({
   timerWarning: {
     color: '#FF5353',
   },
-  questionContainer: {
-    margin: 20,
-    padding: 15,
-    backgroundColor: 'rgba(40, 40, 60, 0.4)',
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  questionPrefix: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 14,
-    marginBottom: 5,
-  },
-  questionText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '500',
-  },
-  optionsContainer: {
-    flex: 1,
-    padding: 10,
-  },
-  optionButton: {
-    marginBottom: 15,
-    borderRadius: 12,
-    overflow: 'hidden',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-  },
-  selectedOption: {
-    borderWidth: 2,
-    borderColor: '#5F25FF',
-    shadowColor: '#5F25FF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  correctOption: {
-    borderColor: '#4CAF50',
-    shadowColor: '#4CAF50',
-  },
-  incorrectOption: {
-    borderColor: '#F44336',
-    shadowColor: '#F44336',
-  },
-  optionGradient: {
-    padding: 15,
-    borderRadius: 12,
-  },
-  optionContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  optionLetter: {
-    color: '#ffffff',
-    fontSize: 20,
-    fontWeight: 'bold',
-    width: 30,
-  },
-  optionText: {
-    color: '#ffffff',
-    fontSize: 16,
-    flex: 1,
-  },
   statusContainer: {
     alignItems: 'center',
     padding: 15,
@@ -301,6 +311,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  timeoutText: {
+    color: '#FF9800',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
   nextButton: {
     margin: 20,
     borderRadius: 12,
@@ -322,5 +337,46 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginRight: 10,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    color: '#ffffff',
+    fontSize: 18,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  backButton: {
+    backgroundColor: 'rgba(95, 37, 255, 0.7)',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+  },
+  backButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  gameEndedContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  gameEndedText: {
+    color: '#4CAF50',
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  gameEndedSubtext: {
+    color: '#ffffff',
+    fontSize: 18,
+    marginBottom: 30,
+    textAlign: 'center',
   },
 });
