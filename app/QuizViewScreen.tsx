@@ -1,6 +1,4 @@
-'use client';
-
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +7,7 @@ import {
   Dimensions,
   Vibration,
   Alert,
+  SafeAreaView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,7 +21,7 @@ const { width } = Dimensions.get('window');
 export default function QuizViewScreen() {
   const router = useRouter();
   const { gameCode } = useLocalSearchParams();
-  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [selectedOption, setSelectedOption] = useState(null);
   const [timeLeft, setTimeLeft] = useState(30);
   const [question, setQuestion] = useState({
     text: 'Waiting for the first question...',
@@ -33,22 +32,59 @@ export default function QuizViewScreen() {
       D: '...',
     },
   });
-  const [answerResult, setAnswerResult] = useState<string | null>(null);
+  const [answerResult, setAnswerResult] = useState(null);
+  const [correctAnswer, setCorrectAnswer] = useState(null);
   const [questionEnded, setQuestionEnded] = useState(false);
   const [gameEnded, setGameEnded] = useState(false);
 
-  const { socket, connected, error } = useSocketConnection(gameCode as string);
+  const { socket, connected, error } = useSocketConnection(gameCode);
 
   useEffect(() => {
     if (!socket) return;
 
+    // Improved debugging of socket events
+    socket.onAny((event, ...args) => {
+      console.log(`[SOCKET EVENT] ${event}:`, JSON.stringify(args));
+    });
+
     socket.on('new_question', (data) => {
-      console.log('New question received:', data);
+      console.log('New question received:', JSON.stringify(data));
+
+      // Safe handling of potentially missing data structure
+      if (!data) {
+        console.error('Received empty data in new_question event');
+        return;
+      }
+
+      // Handle both array and object formats for options
+      let formattedOptions = {};
+
+      if (data.options) {
+        if (Array.isArray(data.options)) {
+          // Convert array format to object format for consistency in mobile
+          formattedOptions = data.options.reduce((acc, option) => {
+            if (option && option.id && option.text) {
+              acc[option.id] = option.text;
+            }
+            return acc;
+          }, {});
+        } else if (typeof data.options === 'object') {
+          formattedOptions = data.options;
+        }
+      }
+
+      console.log('Formatted options:', formattedOptions);
+
       setQuestion({
-        text: data.question.question,
-        options: data.options,
+        text: data.question?.question || 'No question text',
+        options: formattedOptions || {},
       });
-      setTimeLeft(data.timeLimit);
+
+      if (data.question?.correctOptionId) {
+        setCorrectAnswer(data.question.correctOptionId);
+      }
+
+      setTimeLeft(data.timeLimit || 30);
       setSelectedOption(null);
       setAnswerResult(null);
       setQuestionEnded(false);
@@ -59,8 +95,14 @@ export default function QuizViewScreen() {
     });
 
     socket.on('question_ended', (data) => {
-      console.log('Question ended:', data);
+      console.log('Question ended:', JSON.stringify(data));
       setQuestionEnded(true);
+
+      // Update correct answer from the event data
+      if (data && data.correctAnswer) {
+        setCorrectAnswer(data.correctAnswer);
+      }
+
       // If user didn't answer, show the correct answer
       if (selectedOption === null) {
         setAnswerResult('timeout');
@@ -69,13 +111,23 @@ export default function QuizViewScreen() {
     });
 
     socket.on('answer_result', (data) => {
-      console.log('Answer result:', data);
-      setAnswerResult(data.correct ? 'correct' : 'incorrect');
+      console.log('Answer result:', JSON.stringify(data));
+
+      if (data.correct) {
+        setAnswerResult('correct');
+      } else {
+        setAnswerResult('incorrect');
+        // Store the correct answer for display
+        if (data.correctAnswer) {
+          setCorrectAnswer(data.correctAnswer);
+        }
+      }
+
       Vibration.vibrate(data.correct ? [0, 70, 50, 70] : 150);
     });
 
     socket.on('game_ended', (data) => {
-      console.log('Game ended:', data);
+      console.log('Game ended:', JSON.stringify(data));
       setGameEnded(true);
       Alert.alert(
         'Game Over',
@@ -98,7 +150,8 @@ export default function QuizViewScreen() {
     };
   }, [socket, router, selectedOption]);
 
-  const handleOptionSelect = (option: string) => {
+  const handleOptionSelect = (option) => {
+    console.log('Selecting option:', option);
     if (selectedOption === null && !questionEnded && timeLeft > 0) {
       setSelectedOption(option);
       Vibration.vibrate(30);
@@ -171,7 +224,7 @@ export default function QuizViewScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <LinearGradient
         colors={['#0F0F19', '#1F1F2F', '#0A0A14']}
         start={{ x: 0, y: 0 }}
@@ -197,7 +250,7 @@ export default function QuizViewScreen() {
       <AnswerOptions
         options={question.options}
         selectedOption={selectedOption}
-        answerResult={answerResult}
+        answerResult={correctAnswer}
         onOptionSelect={handleOptionSelect}
         questionEnded={questionEnded}
         timeLeft={timeLeft}
@@ -231,7 +284,7 @@ export default function QuizViewScreen() {
           </LinearGradient>
         </TouchableOpacity>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -320,11 +373,11 @@ const styles = StyleSheet.create({
     margin: 20,
     borderRadius: 12,
     overflow: 'hidden',
-    elevation: 5,
     shadowColor: '#5F25FF',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
+    elevation: 5,
   },
   nextButtonGradient: {
     padding: 15,
