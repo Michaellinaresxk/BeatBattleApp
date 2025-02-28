@@ -44,12 +44,11 @@ export default function ControllerScreen() {
   };
 
   const openMenu = () => {
-    // router.push('/QuizControllerScreen');
-    console.log('yes');
+    router.push('/MenuSceen');
   };
 
   const openOptionScreen = () => {
-    router.push('/QuizControllerScreen');
+    router.push('/');
   };
 
   return (
