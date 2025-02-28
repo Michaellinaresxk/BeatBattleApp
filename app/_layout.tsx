@@ -40,11 +40,11 @@ export default function RootLayout() {
           name='WaitingRoomScreen'
           options={{ headerShown: false }}
         />
-        <Stack.Screen name='MenuScreen' options={{ headerShown: false }} />
         <Stack.Screen
           name='ControllerScreen'
           options={{ headerShown: false }}
         />
+        <Stack.Screen name='MenuScreen' options={{ headerShown: true }} />
         <Stack.Screen name='QuizViewScreen' options={{ headerShown: false }} />
         <Stack.Screen name='+not-found' />
       </Stack>
