@@ -21,6 +21,7 @@ export default function ControllerScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { gameCode, nickname } = useLocalSearchParams();
+  const { socket } = useSocketConnection();
 
   const [lastPressed, setLastPressed] = useState('');
   const [activeButton, setActiveButton] = useState(null);
@@ -41,7 +42,19 @@ export default function ControllerScreen() {
     currentQuestion,
     submitAnswer,
     leaveRoom,
+    retryConnection,
   } = useSocketConnection(gameCode, nickname);
+
+  // Añade un efecto para manejar el caso cuando no hay conexión
+  useEffect(() => {
+    // Solo mostrar mensaje de conexión si no está conectado y no hay error
+    if (!connected && !error) {
+      console.log('Esperando conexión al servidor en ControllerScreen...');
+      // No forzar una nueva conexión, esperar a que la conexión actual se establezca
+    } else if (connected) {
+      console.log('Conexión establecida en ControllerScreen!');
+    }
+  }, [connected, error]);
 
   // Watch for game status changes
   useEffect(() => {
@@ -61,37 +74,59 @@ export default function ControllerScreen() {
   // Handle connection errors
   useEffect(() => {
     if (error) {
-      Alert.alert('Connection Error', `Unable to connect: ${error}`, [
-        { text: 'Go Back', onPress: () => router.back() },
-      ]);
+      Alert.alert(
+        'Error de Conexión',
+        `No se pudo conectar al servidor: ${error}`,
+        [
+          {
+            text: 'Reintentar',
+            onPress: () => retryConnection(), // Usa la función que ahora está disponible
+          },
+          {
+            text: 'Volver',
+            onPress: () => router.back(),
+          },
+        ]
+      );
     }
   }, [error, router]);
 
-  // Manage directional button presses with feedback
+  useEffect(() => {
+    if (gameStarted || gameStatus === 'playing') {
+      console.log('Juego iniciado en ControllerScreen', {
+        gameCode,
+        gameStatus,
+        selectedCategory,
+        selectedCategoryType,
+      });
+
+      // Actualizar UI para mostrar que el juego está en progreso
+      setGameInfo({
+        status: 'playing',
+        message: 'Game in progress!',
+      });
+
+      // Aquí puedes añadir más lógica específica para cuando el juego comienza
+    }
+  }, [
+    gameStarted,
+    gameStatus,
+    selectedCategory,
+    selectedCategoryType,
+    gameCode,
+  ]);
+
   const handleDirectionPress = (direction) => {
     setLastPressed(direction);
     setActiveButton(direction);
     Vibration.vibrate(30);
 
-    setTimeout(() => {
-      setActiveButton(null);
-    }, 200);
-  };
-
-  // Manage center button press
-  const handleCenterPress = () => {
-    setLastPressed('enter');
-    setActiveButton('enter');
-    Vibration.vibrate(50);
-
-    // Submit answer if in a question and an option is selected
-    if (gameInfo.status === 'question' && selectedOption) {
-      submitAnswer(selectedOption);
-
-      // Show confirmation to user
-      Alert.alert('Answer Submitted', `You selected option ${selectedOption}`, [
-        { text: 'OK' },
-      ]);
+    if (socket && connected) {
+      socket.emit('send_controller_command', {
+        roomCode: gameCode,
+        action: 'move',
+        direction: direction,
+      });
     }
 
     setTimeout(() => {
@@ -99,7 +134,25 @@ export default function ControllerScreen() {
     }, 200);
   };
 
-  // Handle menu access
+  // Manejar pulsación del botón central
+  const handleCenterPress = () => {
+    setLastPressed('enter');
+    setActiveButton('enter');
+    Vibration.vibrate(50);
+
+    if (socket && connected) {
+      socket.emit('send_controller_command', {
+        roomCode: gameCode,
+        action: 'confirm_selection',
+      });
+    }
+
+    setTimeout(() => {
+      setActiveButton(null);
+    }, 200);
+  };
+
+  // Abrir menú
   const openMenu = () => {
     Alert.alert('Game Menu', 'What would you like to do?', [
       { text: 'Continue', style: 'cancel' },

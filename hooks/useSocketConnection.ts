@@ -2,20 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
-import Constants from 'expo-constants';
 import { Alert } from 'react-native';
+import { router } from 'expo-router';
 
-// IMPORTANTE: Obtiene la URL del servidor utilizando la IP del dispositivo
+// IP fija confirmada - utiliza tu dirección IP real
 const getServerUrl = () => {
-  try {
-    // Intenta obtener la IP del host de depuración de Expo
-    const localhost = Constants.manifest?.debuggerHost?.split(':')[0];
-    // Si se encuentra, usa esa IP, de lo contrario usa un valor predeterminado
-    return localhost ? `http://${localhost}:3000` : 'http://192.168.1.10:3000';
-  } catch (error) {
-    console.error('Error al obtener la URL del servidor:', error);
-    return 'http://192.168.1.10:3000'; // IP de respaldo
-  }
+  return 'http://192.168.1.10:3000';
 };
 
 export function useSocketConnection(gameCode, nickname) {
@@ -35,42 +27,40 @@ export function useSocketConnection(gameCode, nickname) {
 
   // Conectar al socket cuando se monta el componente
   useEffect(() => {
-    // Si no hay código de juego o nickname, no intentar conectar
     if (!gameCode || !nickname) {
-      console.log('No se proporcionó código de juego o nickname');
+      console.log('No game code or nickname provided');
       return;
     }
 
-    // Obtener la URL del servidor
     const serverUrl = getServerUrl();
     console.log(
-      `Conectando a ${serverUrl} con código ${gameCode} como ${nickname}`
+      `Connecting to ${serverUrl} with game code ${gameCode} as ${nickname}`
     );
 
     try {
       // Limpiar cualquier socket previo
       if (socketRef.current) {
-        console.log('Desconectando socket previo');
+        console.log('Cerrando conexión previa');
         socketRef.current.disconnect();
       }
 
       // Crear socket con configuración robusta
-      console.log('Creando nueva conexión socket');
+      console.log('Intentando nueva conexión...');
       const newSocket = io(serverUrl, {
-        transports: ['websocket'], // Usar solo websocket para evitar problemas CORS
+        transports: ['websocket'], // Usar solo websocket para mejor rendimiento
         forceNew: true,
         reconnection: true,
-        reconnectionAttempts: 5,
+        reconnectionAttempts: 10, // Aumentado para más intentos
         reconnectionDelay: 1000,
-        timeout: 20000,
-        path: '/socket.io', // Asegurar que coincida con la ruta del servidor
+        timeout: 30000, // Timeout más largo (30 segundos)
+        path: '/socket.io',
       });
 
       socketRef.current = newSocket;
 
       // Registro de eventos detallado
       newSocket.onAny((event, ...args) => {
-        console.log(`[EVENTO SOCKET] ${event}:`, JSON.stringify(args));
+        console.log(`[SOCKET EVENT] ${event}:`, JSON.stringify(args));
       });
 
       // Manejadores de conexión
@@ -82,9 +72,9 @@ export function useSocketConnection(gameCode, nickname) {
         setConnected(true);
         setError(null);
         setSocket(newSocket);
-        connectionAttemptsRef.current = 0; // Reiniciar contador de intentos
+        connectionAttemptsRef.current = 0; // Resetear contador de intentos
 
-        // Unirse como controlador con más logging
+        // Unirse como controlador
         console.log('Uniéndose como controlador:', { gameCode, nickname });
         newSocket.emit('join_controller', {
           roomCode: gameCode,
@@ -94,7 +84,7 @@ export function useSocketConnection(gameCode, nickname) {
 
       // Manejo de errores mejorado
       newSocket.on('connect_error', (err) => {
-        console.error('Detalles del error de conexión socket:', {
+        console.error('Error de conexión:', {
           message: err.message,
           name: err.name,
           stack: err.stack,
@@ -103,88 +93,58 @@ export function useSocketConnection(gameCode, nickname) {
         connectionAttemptsRef.current += 1;
 
         if (connectionAttemptsRef.current >= MAX_CONNECTION_ATTEMPTS) {
-          const errorMsg = `Conexión fallida después de ${MAX_CONNECTION_ATTEMPTS} intentos: ${
-            err.message || 'Error desconocido'
-          }`;
-          console.error(errorMsg);
-          setError(errorMsg);
+          setError(`Conexión fallida: ${err.message || 'Error desconocido'}`);
 
           // Mostrar alerta al usuario
           Alert.alert(
             'Error de conexión',
-            `No se pudo conectar al servidor. Comprueba tu conexión a internet y que el servidor esté funcionando. Error: ${err.message}`,
-            [
-              {
-                text: 'Reintentar',
-                onPress: () => {
-                  connectionAttemptsRef.current = 0;
-                  retryConnection();
-                },
-              },
-            ]
+            `No se pudo conectar al servidor (${serverUrl}).\n\nVerifica que:\n` +
+              `1. El servidor esté ejecutándose\n` +
+              `2. Tu dispositivo esté en la misma red WiFi\n` +
+              `3. La IP del servidor sea correcta\n\n` +
+              `Error: ${err.message}`,
+            [{ text: 'OK' }]
           );
         } else {
           console.log(
-            `Intento de conexión ${connectionAttemptsRef.current} fallido. Reintentando...`
+            `Intento ${connectionAttemptsRef.current}/${MAX_CONNECTION_ATTEMPTS} fallido. Reintentando...`
           );
-          // El cliente socket.io intentará reconectar automáticamente
         }
 
         setConnected(false);
       });
 
-      // Evento de desconexión
       newSocket.on('disconnect', (reason) => {
         console.warn('Socket desconectado:', reason);
         setConnected(false);
 
-        // Intentar reconectar para ciertos motivos de desconexión
+        // Intentar reconectar automáticamente para ciertos errores
         if (reason === 'io server disconnect' || reason === 'transport close') {
-          console.log('Intentando reconectar automáticamente...');
+          console.log('Reconectando automáticamente...');
           setTimeout(() => {
             newSocket.connect();
           }, 1000);
         }
       });
 
-      // Evento específico para confirmación de conexión establecida
-      newSocket.on('connection_established', (data) => {
-        console.log('Conexión establecida confirmada:', data);
-        // Puedes hacer algo especial aquí si es necesario
-      });
-
-      // Evento para cuando el controlador se une correctamente
+      // Eventos del juego
       newSocket.on('controller_joined', (data) => {
-        console.log('Evento controller_joined recibido:', data);
-
-        if (data && data.players) {
+        console.log('Controller joined event:', data);
+        if (data.players) {
           setPlayers(data.players);
-        } else if (data && data.mobileControllers) {
-          // Algunos servidores pueden devolver controllers separados de players
-          setPlayers(data.mobileControllers);
-        }
-
-        // Actualizar estado de juego si viene en la respuesta
-        if (data && data.gameStatus) {
-          setGameStatus(data.gameStatus);
         }
       });
 
-      // Evento para cambio de estado "listo"
       newSocket.on('player_ready', (data) => {
-        console.log('Evento player_ready recibido:', data);
-
-        if (data && data.playerId === newSocket.id) {
+        console.log('Player ready event:', data);
+        if (data.playerId === newSocket.id) {
           setIsReady(data.isReady);
         }
 
         // Actualizar lista de jugadores con estado "listo"
         setPlayers((prevPlayers) => {
           return prevPlayers.map((player) => {
-            if (
-              player.id === data.playerId ||
-              player.playerId === data.playerId
-            ) {
+            if (player.id === data.playerId) {
               return { ...player, isReady: data.isReady };
             }
             return player;
@@ -192,42 +152,27 @@ export function useSocketConnection(gameCode, nickname) {
         });
       });
 
-      // Evento para inicio de juego
       newSocket.on('game_started', (data) => {
-        console.log('Evento game_started recibido:', data);
+        console.log('Game started event:', data);
         setGameStarted(true);
         setGameStatus('playing');
-
-        if (data && data.category) {
-          setSelectedCategory(data.category);
-        }
-
-        if (data && data.categoryType) {
-          setSelectedCategoryType(data.categoryType);
-        }
+        if (data.category) setSelectedCategory(data.category);
+        if (data.categoryType) setSelectedCategoryType(data.categoryType);
       });
 
-      // Evento para nueva pregunta
       newSocket.on('new_question', (data) => {
-        console.log('Evento new_question recibido:', data);
+        console.log('New question event:', data);
         setCurrentQuestion(data);
       });
 
-      // Evento para manejo de errores del servidor
       newSocket.on('error', (data) => {
-        console.error('Evento de error recibido del servidor:', data);
-        const errorMessage =
-          data && typeof data === 'object' ? data.message : 'Error desconocido';
-        setError(errorMessage);
+        console.error('Socket error event:', data);
+        setError(data.message || 'Error desconocido');
 
-        // Mostrar error al usuario si es importante
-        if (data && data.code === 'ROOM_NOT_FOUND') {
-          Alert.alert(
-            'Sala no encontrada',
-            'El código de sala ingresado no existe. Por favor, verifica el código e intenta nuevamente.',
-            [{ text: 'OK' }]
-          );
-        }
+        // Mostrar error al usuario
+        Alert.alert('Error', data.message || 'Error desconocido del servidor', [
+          { text: 'OK' },
+        ]);
       });
 
       // Conectar explícitamente
@@ -243,10 +188,11 @@ export function useSocketConnection(gameCode, nickname) {
       };
     } catch (err) {
       console.error('Error fatal al crear el socket:', err);
-      const errorMsg = `Error de inicialización: ${
-        err instanceof Error ? err.message : 'Error desconocido'
-      }`;
-      setError(errorMsg);
+      setError(
+        `Error de inicialización: ${
+          err instanceof Error ? err.message : 'Error desconocido'
+        }`
+      );
 
       // Mostrar error al usuario
       Alert.alert(
@@ -259,34 +205,46 @@ export function useSocketConnection(gameCode, nickname) {
     }
   }, [gameCode, nickname]);
 
-  // Cambiar estado "listo"
+  // Toggle ready state
   const toggleReady = useCallback(() => {
     if (!socketRef.current || !connected) {
-      console.error('No se puede cambiar estado listo: no conectado');
+      console.error('Cannot toggle ready: not connected');
       return;
     }
 
     const newReadyState = !isReady;
     setIsReady(newReadyState);
 
-    console.log('Cambiando estado listo a:', newReadyState);
+    console.log('Toggling ready state:', newReadyState);
     socketRef.current.emit('toggle_ready', {
       roomCode: gameCode,
       isReady: newReadyState,
     });
-  }, [connected, isReady, gameCode]);
 
-  // Enviar respuesta a pregunta actual
+    // Navegar inmediatamente a ControllerScreen cuando el usuario se marca como listo
+    if (newReadyState) {
+      console.log('Usuario marcado como listo, navegando a ControllerScreen');
+      router.push({
+        pathname: '/ControllerScreen',
+        params: {
+          gameCode,
+          nickname,
+        },
+      });
+    }
+  }, [connected, isReady, gameCode, router, nickname]);
+
+  // Submit answer to current question
   const submitAnswer = useCallback(
     (answer) => {
       if (!socketRef.current || !connected || !gameStarted) {
         console.error(
-          'No se puede enviar respuesta: no conectado o juego no iniciado'
+          'Cannot submit answer: not connected or game not started'
         );
         return;
       }
 
-      console.log('Enviando respuesta:', answer);
+      console.log('Submitting answer:', answer);
       socketRef.current.emit('submit_answer', {
         roomCode: gameCode,
         answer: answer,
@@ -295,69 +253,35 @@ export function useSocketConnection(gameCode, nickname) {
     [connected, gameStarted, gameCode]
   );
 
-  // Abandonar sala
+  // Leave room
   const leaveRoom = useCallback(() => {
     if (!socketRef.current || !connected) {
-      console.error('No se puede abandonar sala: no conectado');
+      console.error('Cannot leave room: not connected');
       return;
     }
 
-    console.log('Abandonando sala:', gameCode);
     socketRef.current.emit('leave_room', { roomCode: gameCode });
-
-    // Puedes decidir si quieres resetear algún estado aquí
-    // Por ejemplo, podrías querer mantener el error para mostrarlo
-    setPlayers([]);
-    setIsReady(false);
-    setGameStarted(false);
-    setCurrentQuestion(null);
-    setGameStatus('waiting');
-    setSelectedCategory(null);
-    setSelectedCategoryType(null);
   }, [connected, gameCode]);
 
-  // Reintentar conexión
+  // Retry connection - implementación mejorada
   const retryConnection = useCallback(() => {
+    console.log('Intentando restablecer la conexión...');
+
+    // Limpiar socket actual
     if (socketRef.current) {
-      console.log('Desconectando socket para reintentar');
       socketRef.current.disconnect();
       socketRef.current = null;
     }
 
-    // Resetear contador de intentos
+    // Resetear estados para forzar reconexión
     connectionAttemptsRef.current = 0;
-
-    // Forzar re-renderizado del componente para activar useEffect de nuevo
     setSocket(null);
     setConnected(false);
     setError(null);
 
-    console.log('Reintentando conexión...');
+    // La reconexión ocurrirá automáticamente al cambiar estos estados
+    // ya que el useEffect principal volverá a ejecutarse
   }, []);
-
-  // Solicitar siguiente pregunta
-  const requestNextQuestion = useCallback(() => {
-    if (!socketRef.current || !connected || !gameStarted) {
-      console.error(
-        'No se puede solicitar siguiente pregunta: no conectado o juego no iniciado'
-      );
-      return;
-    }
-
-    console.log('Solicitando siguiente pregunta para sala:', gameCode);
-    socketRef.current.emit('request_next_question', { roomCode: gameCode });
-  }, [connected, gameStarted, gameCode]);
-
-  // Solicitar estado actual del juego (útil para recuperar estado después de reconexión)
-  const requestGameStatus = useCallback(() => {
-    if (!socketRef.current || !connected) {
-      console.error('No se puede solicitar estado del juego: no conectado');
-      return;
-    }
-
-    console.log('Solicitando estado actual del juego para sala:', gameCode);
-    socketRef.current.emit('request_game_status', { roomCode: gameCode });
-  }, [connected, gameCode]);
 
   return {
     socket,
@@ -373,9 +297,7 @@ export function useSocketConnection(gameCode, nickname) {
     toggleReady,
     submitAnswer,
     leaveRoom,
-    retryConnection,
-    requestNextQuestion,
-    requestGameStatus,
+    retryConnection, // Ahora incluimos esta función
     serverUrl: getServerUrl(),
   };
 }

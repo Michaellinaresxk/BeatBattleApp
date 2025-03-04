@@ -22,7 +22,7 @@ const { width } = Dimensions.get('window');
 
 export default function QuizViewScreen() {
   const router = useRouter();
-  const { gameCode } = useLocalSearchParams();
+  const { gameCode, nickname } = useLocalSearchParams();
   const [selectedOption, setSelectedOption] = useState(null);
   const [timeLeft, setTimeLeft] = useState(30);
   const [question, setQuestion] = useState({
@@ -40,6 +40,13 @@ export default function QuizViewScreen() {
   const [gameEnded, setGameEnded] = useState(false);
 
   const { socket, connected, error } = useSocketConnection(gameCode);
+
+  useEffect(() => {
+    if (!gameCode) {
+      console.error('No se encontró código de juego en QuizViewScreen');
+      router.replace('/EntryCodeScreen');
+    }
+  }, [gameCode, router]);
 
   useEffect(() => {
     if (!socket) return;
@@ -176,29 +183,29 @@ export default function QuizViewScreen() {
     }
   };
 
-  if (!connected || error) {
-    return (
-      <View style={styles.container}>
-        <LinearGradient
-          colors={['#0F0F19', '#1F1F2F', '#0A0A14']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.background}
-        />
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>
-            {error ? `Error: ${error}` : 'Connecting to server...'}
-          </Text>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.push('/EntryCodeScreen')}
-          >
-            <Text style={styles.backButtonText}>Back to Entry</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
+  // if (!connected || error) {
+  //   return (
+  //     <View style={styles.container}>
+  //       <LinearGradient
+  //         colors={['#0F0F19', '#1F1F2F', '#0A0A14']}
+  //         start={{ x: 0, y: 0 }}
+  //         end={{ x: 1, y: 1 }}
+  //         style={styles.background}
+  //       />
+  //       <View style={styles.errorContainer}>
+  //         <Text style={styles.errorText}>
+  //           {error ? `Error: ${error}` : 'Connecting to server...'}
+  //         </Text>
+  //         <TouchableOpacity
+  //           style={styles.backButton}
+  //           onPress={() => router.push('/EntryCodeScreen')}
+  //         >
+  //           <Text style={styles.backButtonText}>Back to Entry</Text>
+  //         </TouchableOpacity>
+  //       </View>
+  //     </View>
+  //   );
+  // }
 
   if (gameEnded) {
     return (

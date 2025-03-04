@@ -38,8 +38,9 @@ export default function WaitingRoomScreen() {
 
   // Listen for game status changes to redirect
   useEffect(() => {
+    // Revisar si el juego ha iniciado o si todos los jugadores están listos
     if (gameStarted || gameStatus === 'playing') {
-      console.log('Navegando a ControllerScreen', {
+      console.log('Navegando a ControllerScreen debido a inicio de juego', {
         gameCode,
         gameStatus,
         gameStarted,
@@ -53,8 +54,20 @@ export default function WaitingRoomScreen() {
         },
       });
     }
-  }, [gameStarted, gameStatus, gameCode, playerName, router]);
 
+    // Verificar si el usuario está listo y debe ir a ControllerScreen
+    if (isReady) {
+      console.log('Usuario marcado como listo, navegando a ControllerScreen');
+
+      router.push({
+        pathname: '/ControllerScreen',
+        params: {
+          gameCode,
+          nickname: playerName,
+        },
+      });
+    }
+  }, [gameStarted, gameStatus, isReady, gameCode, playerName, router]);
   // Handle connection errors
   useEffect(() => {
     if (error) {
