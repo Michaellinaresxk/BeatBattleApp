@@ -295,16 +295,16 @@ export default function HomeScreen() {
           style={styles.featuresContainer}
         >
           <View style={styles.featureItem}>
-            <Text style={styles.featureHighlight}>100+</Text>
-            <Text style={styles.featureText}>Juegos</Text>
+            <Text style={styles.featureHighlight}>10+</Text>
+            <Text style={styles.featureText}>Games</Text>
           </View>
           <View style={styles.featureItem}>
             <Text style={styles.featureHighlight}>4K</Text>
-            <Text style={styles.featureText}>Gráficos</Text>
+            <Text style={styles.featureText}>Graphic</Text>
           </View>
           <View style={styles.featureItem}>
             <Text style={styles.featureHighlight}>VR</Text>
-            <Text style={styles.featureText}>Compatibilidad</Text>
+            <Text style={styles.featureText}>Compatibility</Text>
           </View>
         </Animated.View>
       </View>

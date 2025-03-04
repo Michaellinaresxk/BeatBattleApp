@@ -21,6 +21,11 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import {
+  features,
+  teamMembers,
+  upcomingFeatures,
+} from '@/constants/ExploreFeatures';
 
 const { width } = Dimensions.get('window');
 
@@ -128,86 +133,6 @@ const TeamMember = ({ name, role, imageUrl, index }) => {
 };
 
 // Current features
-const features = [
-  {
-    id: 1,
-    title: 'Multiplayer Arenas',
-    description:
-      'Compete with friends in high-octane multiplayer battles across various game modes.',
-    imageUrl: '/placeholder.svg?height=200&width=400',
-  },
-  {
-    id: 2,
-    title: 'Immersive Storylines',
-    description:
-      'Dive into rich, narrative-driven single-player campaigns with stunning visuals.',
-    imageUrl: '/placeholder.svg?height=200&width=400',
-  },
-  {
-    id: 3,
-    title: 'Cross-Platform Play',
-    description:
-      'Play seamlessly across devices with our advanced cross-platform technology.',
-    imageUrl: '/placeholder.svg?height=200&width=400',
-  },
-  {
-    id: 4,
-    title: 'Regular Events',
-    description:
-      'Participate in weekly tournaments and seasonal events for exclusive rewards.',
-    imageUrl: '/placeholder.svg?height=200&width=400',
-  },
-];
-
-// New upcoming features
-const upcomingFeatures = [
-  {
-    id: 1,
-    title: 'Virtual Reality Support',
-    releaseDate: 'March 2025',
-    description:
-      'Experience our games in stunning VR with full motion controls and immersive environments.',
-    imageUrl: '/placeholder.svg?height=150&width=300',
-  },
-  {
-    id: 2,
-    title: 'AI Opponents',
-    releaseDate: 'April 2025',
-    description:
-      'Challenge adaptive AI opponents that learn from your playstyle and provide a unique challenge every time.',
-    imageUrl: '/placeholder.svg?height=150&width=300',
-  },
-  {
-    id: 3,
-    title: 'Custom Character Creator',
-    releaseDate: 'May 2025',
-    description:
-      'Design your perfect in-game avatar with thousands of customization options.',
-    imageUrl: '/placeholder.svg?height=150&width=300',
-  },
-];
-
-// Team members for About Us section
-const teamMembers = [
-  {
-    id: 1,
-    name: 'Alex Rodriguez',
-    role: 'Lead Game Designer',
-    imageUrl: '/placeholder.svg?height=120&width=120',
-  },
-  {
-    id: 2,
-    name: 'Sophia Chen',
-    role: 'Creative Director',
-    imageUrl: '/placeholder.svg?height=120&width=120',
-  },
-  {
-    id: 3,
-    name: 'Marcus Johnson',
-    role: 'Lead Developer',
-    imageUrl: '/placeholder.svg?height=120&width=120',
-  },
-];
 
 export default function TabTwoScreen() {
   const scrollY = useSharedValue(0);
@@ -343,26 +268,11 @@ export default function TabTwoScreen() {
 
         {/* Enhanced About Us Section */}
         <View style={styles.aboutSection}>
-          <ThemedText type='title' style={styles.sectionTitle}>
-            About Us
-          </ThemedText>
-
           <LinearGradient
             colors={['rgba(99, 102, 241, 0.15)', 'rgba(88, 28, 135, 0.15)']}
             style={styles.aboutCard}
           >
-            <ThemedText style={styles.aboutText}>
-              We are a passionate team of game developers and creators dedicated
-              to bringing you the most immersive and exciting gaming
-              experiences. Our mission is to push the boundaries of what's
-              possible in gaming and create unforgettable adventures for players
-              worldwide.
-            </ThemedText>
-
             {/* Team members */}
-            <ThemedText type='title' style={styles.teamTitle}>
-              Meet Our Team
-            </ThemedText>
 
             <View style={styles.teamContainer}>
               {teamMembers.map((member, index) => (
@@ -384,28 +294,6 @@ export default function TabTwoScreen() {
             </View>
 
             {/* Company stats */}
-            <View style={styles.statsContainer}>
-              <View style={styles.statItem}>
-                <ThemedText type='title' style={styles.statNumber}>
-                  10+
-                </ThemedText>
-                <ThemedText style={styles.statLabel}>
-                  Games in Development
-                </ThemedText>
-              </View>
-              <View style={styles.statItem}>
-                <ThemedText type='title' style={styles.statNumber}>
-                  1M+
-                </ThemedText>
-                <ThemedText style={styles.statLabel}>Global Players</ThemedText>
-              </View>
-              <View style={styles.statItem}>
-                <ThemedText type='title' style={styles.statNumber}>
-                  24/7
-                </ThemedText>
-                <ThemedText style={styles.statLabel}>Support</ThemedText>
-              </View>
-            </View>
           </LinearGradient>
         </View>
       </ThemedView>

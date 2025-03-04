@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,47 +8,175 @@ import {
   StyleSheet,
   Dimensions,
   Vibration,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, FontAwesome5, MaterialIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useSocketConnection } from '../hooks/useSocketConnection';
 
 const { width, height } = Dimensions.get('window');
 
 export default function ControllerScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
+  const { gameCode, nickname } = useLocalSearchParams();
+  const { socket } = useSocketConnection();
+
   const [lastPressed, setLastPressed] = useState('');
   const [activeButton, setActiveButton] = useState(null);
+  const [selectedOption, setSelectedOption] = useState(null);
+  const [gameInfo, setGameInfo] = useState({
+    status: 'waiting',
+    message: 'Waiting for the host to start the game...',
+  });
 
-  // Manage directional button presses with feedback
+  // Socket connection
+  const {
+    connected,
+    error,
+    selectedCategory,
+    selectedCategoryType,
+    gameStarted,
+    gameStatus,
+    currentQuestion,
+    submitAnswer,
+    leaveRoom,
+    retryConnection,
+  } = useSocketConnection(gameCode, nickname);
+
+  // Añade un efecto para manejar el caso cuando no hay conexión
+  useEffect(() => {
+    // Solo mostrar mensaje de conexión si no está conectado y no hay error
+    if (!connected && !error) {
+      console.log('Esperando conexión al servidor en ControllerScreen...');
+      // No forzar una nueva conexión, esperar a que la conexión actual se establezca
+    } else if (connected) {
+      console.log('Conexión establecida en ControllerScreen!');
+    }
+  }, [connected, error]);
+
+  // Watch for game status changes
+  useEffect(() => {
+    if (gameStatus === 'playing') {
+      setGameInfo({
+        status: 'playing',
+        message: 'Game in progress!',
+      });
+    } else if (gameStatus === 'ended') {
+      setGameInfo({
+        status: 'ended',
+        message: 'Game has ended!',
+      });
+    }
+  }, [gameStatus]);
+
+  // Handle connection errors
+  useEffect(() => {
+    if (error) {
+      Alert.alert(
+        'Error de Conexión',
+        `No se pudo conectar al servidor: ${error}`,
+        [
+          {
+            text: 'Reintentar',
+            onPress: () => retryConnection(), // Usa la función que ahora está disponible
+          },
+          {
+            text: 'Volver',
+            onPress: () => router.back(),
+          },
+        ]
+      );
+    }
+  }, [error, router]);
+
+  useEffect(() => {
+    if (gameStarted || gameStatus === 'playing') {
+      console.log('Juego iniciado en ControllerScreen', {
+        gameCode,
+        gameStatus,
+        selectedCategory,
+        selectedCategoryType,
+      });
+
+      // Actualizar UI para mostrar que el juego está en progreso
+      setGameInfo({
+        status: 'playing',
+        message: 'Game in progress!',
+      });
+
+      // Aquí puedes añadir más lógica específica para cuando el juego comienza
+    }
+  }, [
+    gameStarted,
+    gameStatus,
+    selectedCategory,
+    selectedCategoryType,
+    gameCode,
+  ]);
+
   const handleDirectionPress = (direction) => {
     setLastPressed(direction);
     setActiveButton(direction);
     Vibration.vibrate(30);
-    console.log(`Presionado: ${direction}`);
+
+    if (socket && connected) {
+      socket.emit('send_controller_command', {
+        roomCode: gameCode,
+        action: 'move',
+        direction: direction,
+      });
+    }
 
     setTimeout(() => {
       setActiveButton(null);
     }, 200);
   };
 
-  // Manage center button press
+  // Manejar pulsación del botón central
   const handleCenterPress = () => {
     setLastPressed('enter');
     setActiveButton('enter');
     Vibration.vibrate(50);
-    console.log('Presionado: Enter');
+
+    if (socket && connected) {
+      socket.emit('send_controller_command', {
+        roomCode: gameCode,
+        action: 'confirm_selection',
+      });
+    }
+
     setTimeout(() => {
       setActiveButton(null);
     }, 200);
   };
 
+  // Abrir menú
   const openMenu = () => {
-    router.push('/MenuSceen');
+    Alert.alert('Game Menu', 'What would you like to do?', [
+      { text: 'Continue', style: 'cancel' },
+      {
+        text: 'Leave Game',
+        style: 'destructive',
+        onPress: () => {
+          leaveRoom();
+          router.push('/');
+        },
+      },
+    ]);
   };
 
-  const openOptionScreen = () => {
-    router.push('/');
+  // Get current category information
+  const getCategoryInfo = () => {
+    if (selectedCategoryType && selectedCategory) {
+      return `${selectedCategoryType} - ${selectedCategory}`;
+    } else if (selectedCategoryType) {
+      return selectedCategoryType;
+    } else if (selectedCategory) {
+      return selectedCategory;
+    }
+    return 'No category selected';
   };
 
   return (
@@ -70,11 +198,13 @@ export default function ControllerScreen() {
               colors={['#4A6BF5', '#5F25FF']}
               style={styles.avatar}
             >
-              <Text style={styles.avatarInitial}>M</Text>
+              <Text style={styles.avatarInitial}>
+                {nickname?.charAt(0).toUpperCase() || 'P'}
+              </Text>
             </LinearGradient>
           </View>
-          <Text style={styles.username}>Michael</Text>
-          <TouchableOpacity onPress={() => {}} style={styles.editButton}>
+          <Text style={styles.username}>{nickname || 'Player'}</Text>
+          <TouchableOpacity style={styles.editButton}>
             <Ionicons name='pencil' size={16} color='white' />
           </TouchableOpacity>
         </View>
@@ -89,17 +219,24 @@ export default function ControllerScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Game info display */}
+      <View style={styles.gameInfoContainer}>
+        <Text style={styles.gameStatus}>
+          Room: {gameCode} • Status: {gameInfo.status}
+        </Text>
+        <Text style={styles.categoryInfo}>{getCategoryInfo()}</Text>
+      </View>
+
       {/* Información sobre último botón pulsado */}
       {lastPressed && (
         <View style={styles.lastPressedContainer}>
           <Text style={styles.lastPressedText}>
-            Último comando:{' '}
-            <Text style={styles.commandText}>{lastPressed}</Text>
+            Last command: <Text style={styles.commandText}>{lastPressed}</Text>
           </Text>
         </View>
       )}
 
-      {/* Information about the last button pressed */}
+      {/* Controller pad */}
       <View style={styles.controllerContainer}>
         {/* D-pad principal */}
         <View style={styles.dpadMainContainer}>
@@ -142,7 +279,6 @@ export default function ControllerScreen() {
                   name='keyboard-arrow-right'
                   size={32}
                   color='white'
-                  xx
                 />
               </TouchableOpacity>
 
@@ -208,7 +344,7 @@ export default function ControllerScreen() {
 
         <TouchableOpacity
           style={styles.bottomBarButton}
-          onPress={openOptionScreen}
+          onPress={() => navigation.navigate('MenuScreen')}
         >
           <Ionicons name='grid' size={24} color='white' />
         </TouchableOpacity>
@@ -224,7 +360,6 @@ export default function ControllerScreen() {
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -261,7 +396,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 50,
-    paddingBottom: 20,
+    paddingBottom: 10,
   },
   profileSection: {
     flexDirection: 'row',
@@ -307,17 +442,51 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 20,
   },
+  gameInfoContainer: {
+    backgroundColor: 'rgba(40, 40, 60, 0.4)',
+    margin: 10,
+    padding: 10,
+    borderRadius: 10,
+  },
+  gameStatus: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  categoryInfo: {
+    color: '#dddddd',
+    fontSize: 12,
+    marginTop: 5,
+  },
+  questionInfoContainer: {
+    backgroundColor: 'rgba(40, 40, 60, 0.4)',
+    margin: 10,
+    padding: 15,
+    borderRadius: 10,
+    maxHeight: 150,
+  },
+  questionText: {
+    color: '#ffffff',
+    fontSize: 16,
+    marginBottom: 10,
+    fontWeight: 'bold',
+  },
+  optionsText: {
+    color: '#dddddd',
+    fontSize: 14,
+    lineHeight: 22,
+  },
   lastPressedContainer: {
     alignItems: 'center',
-    padding: 10,
+    padding: 8,
     backgroundColor: 'rgba(40, 40, 60, 0.4)',
     borderRadius: 12,
     marginHorizontal: 20,
-    marginTop: 10,
+    marginVertical: 5,
   },
   lastPressedText: {
     color: '#aaaaaa',
-    fontSize: 16,
+    fontSize: 14,
   },
   commandText: {
     color: '#ffffff',

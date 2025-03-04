@@ -1,133 +1,130 @@
+import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-
-interface Option {
-  id: string;
-  text: string;
-}
 
 interface AnswerOptionsProps {
-  options: Option[] | Record<string, Option>;
+  options: any; // Support both array and object formats
   selectedOption: string | null;
   answerResult: string | null;
-  onOptionSelect: (option: string) => void;
+  onOptionSelect: (id: string) => void;
   questionEnded: boolean;
   timeLeft: number;
 }
 
-export function AnswerOptions({
+export const AnswerOptions: React.FC<AnswerOptionsProps> = ({
   options,
   selectedOption,
   answerResult,
   onOptionSelect,
   questionEnded,
   timeLeft,
-}: AnswerOptionsProps) {
-  // Convert options to array if it's an object
-  const optionsArray = Array.isArray(options)
-    ? options
-    : Object.entries(options).map(([id, option]) => {
-        // If option is an object with text property, use it
-        if (typeof option === 'object' && option.text) {
-          return option;
-        }
-        // Otherwise, create an option object
-        return { id, text: String(option) };
-      });
+}) => {
+  // Debugging
+  console.log('Rendering options:', options);
+  console.log('Options type:', typeof options);
+  console.log('Is array:', Array.isArray(options));
 
-  return (
-    <View style={styles.optionsContainer}>
-      {optionsArray.map((option) => {
-        const isSelected = selectedOption === option.id;
-        const isDisabled =
-          selectedOption !== null || questionEnded || timeLeft <= 0;
+  // Handle both array and object formats
+  const renderOptions = () => {
+    // If options is an array (web app format)
+    if (Array.isArray(options)) {
+      return options.map((option, index) => (
+        <TouchableOpacity
+          key={option.id || `option-${index}`}
+          style={[
+            styles.optionButton,
+            selectedOption === option.id && styles.optionSelected,
+            questionEnded && answerResult === option.id && styles.optionCorrect,
+            questionEnded &&
+              selectedOption === option.id &&
+              selectedOption !== answerResult &&
+              styles.optionIncorrect,
+          ]}
+          onPress={() => handleSelectOption(option.id)}
+          disabled={questionEnded || timeLeft <= 0 || selectedOption !== null}
+        >
+          <Text style={styles.optionText}>{option.text}</Text>
+        </TouchableOpacity>
+      ));
+    }
+    // If options is an object (mobile app format)
+    else if (options && typeof options === 'object') {
+      return Object.entries(options).map(([key, value], index) => (
+        <TouchableOpacity
+          key={key || `option-${index}`}
+          style={[
+            styles.optionButton,
+            selectedOption === key && styles.optionSelected,
+            questionEnded && answerResult === key && styles.optionCorrect,
+            questionEnded &&
+              selectedOption === key &&
+              selectedOption !== answerResult &&
+              styles.optionIncorrect,
+          ]}
+          onPress={() => handleSelectOption(key)}
+          disabled={questionEnded || timeLeft <= 0 || selectedOption !== null}
+        >
+          <Text style={styles.optionText}>{String(value)}</Text>
+        </TouchableOpacity>
+      ));
+    }
+    // Fallback if options is undefined or has unexpected format
+    else {
+      return (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>
+            No options available or invalid format
+          </Text>
+        </View>
+      );
+    }
+  };
 
-        let backgroundColor = 'rgba(40, 40, 60, 0.4)';
-        let borderColor = 'rgba(255, 255, 255, 0.1)';
+  const handleSelectOption = (optionId: string) => {
+    console.log('Option selected:', optionId);
+    if (!selectedOption && !questionEnded && timeLeft > 0) {
+      onOptionSelect(optionId);
+    }
+  };
 
-        if (isSelected) {
-          if (answerResult === 'correct') {
-            backgroundColor = 'rgba(76, 175, 80, 0.3)';
-            borderColor = '#4CAF50';
-          } else if (answerResult === 'incorrect') {
-            backgroundColor = 'rgba(244, 67, 54, 0.3)';
-            borderColor = '#F44336';
-          } else {
-            backgroundColor = 'rgba(95, 37, 255, 0.3)';
-            borderColor = '#5F25FF';
-          }
-        }
-
-        return (
-          <TouchableOpacity
-            key={option.id}
-            style={[
-              styles.optionButton,
-              { backgroundColor, borderColor },
-              isDisabled && styles.optionDisabled,
-            ]}
-            onPress={() => onOptionSelect(option.id)}
-            disabled={isDisabled}
-          >
-            <LinearGradient
-              colors={
-                isSelected
-                  ? ['rgba(95, 37, 255, 0.2)', 'rgba(74, 107, 245, 0.2)']
-                  : ['transparent', 'transparent']
-              }
-              style={styles.optionGradient}
-            >
-              <View style={styles.optionContent}>
-                <View style={styles.optionBadge}>
-                  <Text style={styles.optionBadgeText}>{option.id}</Text>
-                </View>
-                <Text style={styles.optionText}>{option.text}</Text>
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-}
+  return <View style={styles.container}>{renderOptions()}</View>;
+};
 
 const styles = StyleSheet.create({
-  optionsContainer: {
+  container: {
+    width: '100%',
     padding: 10,
-    marginTop: 10,
   },
   optionButton: {
-    marginBottom: 15,
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  optionGradient: {
+    backgroundColor: 'rgba(60, 60, 100, 0.6)',
     padding: 15,
+    borderRadius: 12,
+    marginVertical: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
-  optionContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  optionSelected: {
+    backgroundColor: 'rgba(74, 107, 245, 0.8)',
+    borderColor: '#5F25FF',
   },
-  optionBadge: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
+  optionCorrect: {
+    backgroundColor: 'rgba(76, 175, 80, 0.8)',
+    borderColor: '#4CAF50',
   },
-  optionBadgeText: {
-    color: '#ffffff',
-    fontWeight: 'bold',
+  optionIncorrect: {
+    backgroundColor: 'rgba(244, 67, 54, 0.8)',
+    borderColor: '#F44336',
   },
   optionText: {
-    color: '#ffffff',
+    color: '#FFFFFF',
     fontSize: 16,
-    flex: 1,
+    textAlign: 'center',
   },
-  optionDisabled: {
-    opacity: 0.7,
+  errorContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#FF9800',
+    fontSize: 16,
   },
 });
