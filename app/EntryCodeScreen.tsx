@@ -13,19 +13,35 @@ import { useRouter } from 'expo-router';
 export default function EntryCodeScreen() {
   const router = useRouter();
   const [code, setCode] = useState('');
+  const [nickname, setNickname] = useState(''); // Añadir estado para nickname
 
   const handleSubmit = () => {
+    // Validar el código
     if (code.length < 4) {
-      Alert.alert('Error', 'The code must be at least 4 characters long');
+      Alert.alert('Error', 'El código debe tener al menos 4 caracteres');
+      return;
+    }
+
+    // Validar el nickname
+    if (!nickname.trim()) {
+      Alert.alert('Error', 'Por favor ingresa un nickname');
       return;
     }
 
     const formattedCode = code.toUpperCase();
-    console.log('Navigating to WaitingRoom with code:', formattedCode);
+    console.log(
+      'Navigating to WaitingRoom with code:',
+      formattedCode,
+      'as',
+      nickname
+    );
 
     router.push({
       pathname: '/WaitingRoomScreen',
-      params: { gameCode: formattedCode },
+      params: {
+        gameCode: formattedCode,
+        nickname: nickname.trim(), // Pasar el nickname como parámetro
+      },
     });
   };
 
@@ -35,18 +51,28 @@ export default function EntryCodeScreen() {
         colors={['#0F0F19', '#1F1F2F', '#0A0A14']}
         style={styles.background}
       />
-
-      <Text style={styles.title}>GAME CODE</Text>
-
-      <View style={styles.codeContainer}>
+      <Text style={styles.title}>UNIRSE AL JUEGO</Text>
+      <View style={styles.formContainer}>
+        <Text style={styles.label}>CÓDIGO DE SALA</Text>
         <TextInput
           style={styles.codeInput}
           placeholder='Ingresa el código'
           placeholderTextColor='#999'
           value={code}
-          onChangeText={setCode}
+          onChangeText={(text) => setCode(text.toUpperCase())}
           maxLength={6}
           autoCapitalize='characters'
+        />
+
+        {/* Añadir input para nickname */}
+        <Text style={styles.label}>TU NICKNAME</Text>
+        <TextInput
+          style={styles.codeInput}
+          placeholder='Ingresa tu nickname'
+          placeholderTextColor='#999'
+          value={nickname}
+          onChangeText={setNickname}
+          maxLength={20}
         />
 
         <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
@@ -80,10 +106,15 @@ const styles = StyleSheet.create({
     marginBottom: 40,
     textAlign: 'center',
   },
-  codeContainer: {
+  formContainer: {
     width: '100%',
     maxWidth: 360,
-    alignItems: 'center',
+  },
+  label: {
+    color: '#ffffff',
+    fontSize: 14,
+    marginBottom: 8,
+    fontWeight: '600',
   },
   codeInput: {
     backgroundColor: 'rgba(40, 40, 60, 0.4)',
@@ -101,14 +132,15 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     backgroundColor: 'rgba(95, 37, 255, 0.7)',
+    width: '100%',
     paddingVertical: 15,
-    paddingHorizontal: 40,
     borderRadius: 12,
     shadowColor: '#5F25FF',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 5,
+    marginTop: 10,
   },
   submitText: {
     color: '#ffffff',
