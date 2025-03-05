@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -21,18 +21,9 @@ export default function ControllerScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { gameCode, nickname } = useLocalSearchParams();
-  const { socket } = useSocketConnection();
 
-  const [lastPressed, setLastPressed] = useState('');
-  const [activeButton, setActiveButton] = useState(null);
-  const [selectedOption, setSelectedOption] = useState(null);
-  const [gameInfo, setGameInfo] = useState({
-    status: 'waiting',
-    message: 'Waiting for the host to start the game...',
-  });
-
-  // Socket connection
   const {
+    socket,
     connected,
     error,
     selectedCategory,
@@ -43,31 +34,60 @@ export default function ControllerScreen() {
     submitAnswer,
     leaveRoom,
     retryConnection,
-  } = useSocketConnection(gameCode, nickname);
+  } = useSocketConnection(gameCode as string, nickname as string);
+
+  const [lastPressed, setLastPressed] = useState('');
+  const [activeButton, setActiveButton] = useState(null);
+  const [selectedOption, setSelectedOption] = useState(null);
+  const [gameInfo, setGameInfo] = useState({
+    status: 'waiting',
+    message: 'Waiting for the host to start the game...',
+    currentScreen: 'waiting',
+  });
 
   // Añade un efecto para manejar el caso cuando no hay conexión
   useEffect(() => {
-    // Solo mostrar mensaje de conexión si no está conectado y no hay error
     if (!connected && !error) {
       console.log('Esperando conexión al servidor en ControllerScreen...');
-      // No forzar una nueva conexión, esperar a que la conexión actual se establezca
     } else if (connected) {
       console.log('Conexión establecida en ControllerScreen!');
     }
   }, [connected, error]);
 
+  // Escuchar actualizaciones sobre la pantalla actual
+  useEffect(() => {
+    if (!socket || !connected) return;
+
+    const handleScreenChanged = (data) => {
+      console.log('Pantalla cambiada:', data);
+      setGameInfo((prev) => ({
+        ...prev,
+        currentScreen: data.screen || prev.currentScreen,
+        options: data.options || [],
+      }));
+    };
+
+    socket.on('screen_changed', handleScreenChanged);
+
+    return () => {
+      socket.off('screen_changed', handleScreenChanged);
+    };
+  }, [socket, connected]);
+
   // Watch for game status changes
   useEffect(() => {
     if (gameStatus === 'playing') {
-      setGameInfo({
+      setGameInfo((prev) => ({
+        ...prev,
         status: 'playing',
         message: 'Game in progress!',
-      });
+      }));
     } else if (gameStatus === 'ended') {
-      setGameInfo({
+      setGameInfo((prev) => ({
+        ...prev,
         status: 'ended',
         message: 'Game has ended!',
-      });
+      }));
     }
   }, [gameStatus]);
 
@@ -80,7 +100,7 @@ export default function ControllerScreen() {
         [
           {
             text: 'Reintentar',
-            onPress: () => retryConnection(), // Usa la función que ahora está disponible
+            onPress: () => retryConnection(),
           },
           {
             text: 'Volver',
@@ -89,58 +109,52 @@ export default function ControllerScreen() {
         ]
       );
     }
-  }, [error, router]);
+  }, [error, router, retryConnection]);
 
-  useEffect(() => {
-    if (gameStarted || gameStatus === 'playing') {
-      console.log('Juego iniciado en ControllerScreen', {
-        gameCode,
-        gameStatus,
-        selectedCategory,
-        selectedCategoryType,
-      });
+  // Manejar eventos del controlador - Mejorar con useCallback para evitar redeclaraciones
+  const handleDirectionPress = useCallback(
+    (direction) => {
+      setLastPressed(direction);
+      setActiveButton(direction);
+      Vibration.vibrate(30);
 
-      // Actualizar UI para mostrar que el juego está en progreso
-      setGameInfo({
-        status: 'playing',
-        message: 'Game in progress!',
-      });
+      if (socket && connected) {
+        console.log(`Enviando dirección: ${direction} para sala ${gameCode}`);
 
-      // Aquí puedes añadir más lógica específica para cuando el juego comienza
-    }
-  }, [
-    gameStarted,
-    gameStatus,
-    selectedCategory,
-    selectedCategoryType,
-    gameCode,
-  ]);
+        // Enviar ambos formatos para asegurar compatibilidad
+        socket.emit('controller_direction', {
+          roomCode: gameCode,
+          direction: direction,
+        });
 
-  const handleDirectionPress = (direction) => {
-    setLastPressed(direction);
-    setActiveButton(direction);
-    Vibration.vibrate(30);
+        socket.emit('send_controller_command', {
+          roomCode: gameCode,
+          action: 'move',
+          direction: direction,
+        });
+      }
 
-    if (socket && connected) {
-      socket.emit('send_controller_command', {
-        roomCode: gameCode,
-        action: 'move',
-        direction: direction,
-      });
-    }
-
-    setTimeout(() => {
-      setActiveButton(null);
-    }, 200);
-  };
+      setTimeout(() => {
+        setActiveButton(null);
+      }, 200);
+    },
+    [socket, connected, gameCode]
+  );
 
   // Manejar pulsación del botón central
-  const handleCenterPress = () => {
+  const handleCenterPress = useCallback(() => {
     setLastPressed('enter');
     setActiveButton('enter');
     Vibration.vibrate(50);
 
     if (socket && connected) {
+      console.log(`Enviando comando ENTER/OK para sala ${gameCode}`);
+
+      // Enviar ambos formatos para asegurar compatibilidad
+      socket.emit('controller_enter', {
+        roomCode: gameCode,
+      });
+
       socket.emit('send_controller_command', {
         roomCode: gameCode,
         action: 'confirm_selection',
@@ -150,10 +164,10 @@ export default function ControllerScreen() {
     setTimeout(() => {
       setActiveButton(null);
     }, 200);
-  };
+  }, [socket, connected, gameCode]);
 
   // Abrir menú
-  const openMenu = () => {
+  const openMenu = useCallback(() => {
     Alert.alert('Game Menu', 'What would you like to do?', [
       { text: 'Continue', style: 'cancel' },
       {
@@ -165,10 +179,10 @@ export default function ControllerScreen() {
         },
       },
     ]);
-  };
+  }, [leaveRoom, router]);
 
   // Get current category information
-  const getCategoryInfo = () => {
+  const getCategoryInfo = useCallback(() => {
     if (selectedCategoryType && selectedCategory) {
       return `${selectedCategoryType} - ${selectedCategory}`;
     } else if (selectedCategoryType) {
@@ -177,7 +191,12 @@ export default function ControllerScreen() {
       return selectedCategory;
     }
     return 'No category selected';
-  };
+  }, [selectedCategoryType, selectedCategory]);
+
+  // Mostrar pantalla actual
+  const getCurrentScreenInfo = useCallback(() => {
+    return `Screen: ${gameInfo.currentScreen || 'unknown'}`;
+  }, [gameInfo.currentScreen]);
 
   return (
     <View style={styles.container}>
@@ -199,7 +218,7 @@ export default function ControllerScreen() {
               style={styles.avatar}
             >
               <Text style={styles.avatarInitial}>
-                {nickname?.charAt(0).toUpperCase() || 'P'}
+                {nickname ? String(nickname).charAt(0).toUpperCase() : 'P'}
               </Text>
             </LinearGradient>
           </View>
@@ -225,6 +244,10 @@ export default function ControllerScreen() {
           Room: {gameCode} • Status: {gameInfo.status}
         </Text>
         <Text style={styles.categoryInfo}>{getCategoryInfo()}</Text>
+        <Text style={styles.screenInfo}>{getCurrentScreenInfo()}</Text>
+        <Text style={styles.connectionStatus}>
+          {connected ? '✅ Connected' : '❌ Disconnected'}
+        </Text>
       </View>
 
       {/* Información sobre último botón pulsado */}
@@ -360,6 +383,7 @@ export default function ControllerScreen() {
     </View>
   );
 }
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -457,6 +481,17 @@ const styles = StyleSheet.create({
     color: '#dddddd',
     fontSize: 12,
     marginTop: 5,
+  },
+  screenInfo: {
+    color: '#aaffaa',
+    fontSize: 12,
+    marginTop: 5,
+  },
+  connectionStatus: {
+    color: '#ffffff',
+    fontSize: 12,
+    marginTop: 5,
+    fontWeight: 'bold',
   },
   questionInfoContainer: {
     backgroundColor: 'rgba(40, 40, 60, 0.4)',
