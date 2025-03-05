@@ -13,6 +13,7 @@ const getServerUrl = () => {
 export function useSocketConnection(gameCode, nickname) {
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
+
   const [error, setError] = useState(null);
   const [players, setPlayers] = useState([]);
   const [isReady, setIsReady] = useState(false);
@@ -24,6 +25,8 @@ export function useSocketConnection(gameCode, nickname) {
   const socketRef = useRef(null);
   const connectionAttemptsRef = useRef(0);
   const MAX_CONNECTION_ATTEMPTS = 5;
+  const [currentScreen, setCurrentScreen] = useState('waiting');
+  const [availableOptions, setAvailableOptions] = useState([]);
 
   // Conectar al socket cuando se monta el componente
   useEffect(() => {
@@ -69,6 +72,7 @@ export function useSocketConnection(gameCode, nickname) {
           id: newSocket.id,
           transport: newSocket.io.engine.transport.name,
         });
+
         setConnected(true);
         setError(null);
         setSocket(newSocket);
@@ -205,6 +209,27 @@ export function useSocketConnection(gameCode, nickname) {
     }
   }, [gameCode, nickname]);
 
+  useEffect(() => {
+    if (!socketRef.current || !connected) return;
+
+    // Escuchar cambios de pantalla desde la web
+    const handleScreenChange = (data) => {
+      console.log('📱 App web cambió pantalla:', data);
+      setCurrentScreen(data.screen || 'unknown');
+      if (data.options) setAvailableOptions(data.options);
+    };
+
+    // Registrar los listeners
+    socketRef.current.on('screen_changed', handleScreenChange);
+
+    // Limpiar cuando se desmonte
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.off('screen_changed', handleScreenChange);
+      }
+    };
+  }, [connected]);
+
   // Toggle ready state
   const toggleReady = useCallback(() => {
     if (!socketRef.current || !connected) {
@@ -283,8 +308,37 @@ export function useSocketConnection(gameCode, nickname) {
     // ya que el useEffect principal volverá a ejecutarse
   }, []);
 
+  // Función para enviar comandos del controlador
+  const sendControllerCommand = useCallback(
+    (action, direction, additionalData = {}) => {
+      if (!socketRef.current || !connected || !gameCode) {
+        console.error('No se puede enviar comando: no hay conexión');
+        return false;
+      }
+
+      console.log(`📱 Enviando comando: ${action}`, {
+        direction,
+        ...additionalData,
+      });
+
+      // Incluir el screen actual para que la app web sepa a qué pantalla va dirigido
+      socketRef.current.emit('send_controller_command', {
+        roomCode: gameCode,
+        action,
+        direction,
+        targetScreen: currentScreen,
+        ...additionalData,
+      });
+
+      // Vibración para feedback táctil
+      Vibration.vibrate(30);
+      return true;
+    },
+    [connected, gameCode, currentScreen]
+  );
+
   return {
-    socket,
+    socket: socketRef.current, // Esta línea es clave
     connected,
     error,
     players,
@@ -297,7 +351,10 @@ export function useSocketConnection(gameCode, nickname) {
     toggleReady,
     submitAnswer,
     leaveRoom,
-    retryConnection, // Ahora incluimos esta función
+    retryConnection,
     serverUrl: getServerUrl(),
+    currentScreen,
+    availableOptions,
+    sendControllerCommand,
   };
 }

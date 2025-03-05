@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -21,11 +21,12 @@ export default function ControllerScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { gameCode, nickname } = useLocalSearchParams();
-  const { socket } = useSocketConnection();
 
   const [lastPressed, setLastPressed] = useState('');
   const [activeButton, setActiveButton] = useState(null);
   const [selectedOption, setSelectedOption] = useState(null);
+  const [currentWebScreen, setCurrentWebScreen] = useState('selection');
+  const [isReady, setIsReady] = useState(false);
   const [gameInfo, setGameInfo] = useState({
     status: 'waiting',
     message: 'Waiting for the host to start the game...',
@@ -34,6 +35,7 @@ export default function ControllerScreen() {
   // Socket connection
   const {
     connected,
+    socket,
     error,
     selectedCategory,
     selectedCategoryType,
@@ -44,6 +46,15 @@ export default function ControllerScreen() {
     leaveRoom,
     retryConnection,
   } = useSocketConnection(gameCode, nickname);
+
+  const localSocketRef = useRef(null);
+
+  useEffect(() => {
+    console.log('Datos de inicialización:', { gameCode, nickname });
+    if (!gameCode || !nickname) {
+      console.warn('Datos incompletos para la conexión del socket');
+    }
+  }, [gameCode, nickname]);
 
   // Añade un efecto para manejar el caso cuando no hay conexión
   useEffect(() => {
@@ -116,17 +127,55 @@ export default function ControllerScreen() {
     gameCode,
   ]);
 
+  useEffect(() => {
+    if (socket) {
+      localSocketRef.current = socket;
+    }
+  }, [socket]);
+
+  useEffect(() => {
+    if (socket && connected && gameCode) {
+      setIsReady(true);
+    } else {
+      setIsReady(false);
+    }
+  }, [socket, connected, gameCode]);
+
+  // En ControllerScreen.tsx (Expo)
   const handleDirectionPress = (direction) => {
     setLastPressed(direction);
     setActiveButton(direction);
     Vibration.vibrate(30);
 
-    if (socket && connected) {
-      socket.emit('send_controller_command', {
+    // Usar un socket efectivo que puede ser socket o localSocketRef.current
+    const effectiveSocket = socket || localSocketRef.current;
+
+    console.log(`Intentando enviar dirección: ${direction}`);
+    console.log(`Socket efectivo conectado: ${!!effectiveSocket}`);
+    console.log(`Conexión: ${connected}`);
+    console.log(`Código de sala: ${gameCode}`);
+
+    if (isReady) {
+      console.log(`Enviando controller_direction con dirección ${direction}`);
+      socket.emit('controller_direction', {
         roomCode: gameCode,
-        action: 'move',
-        direction: direction,
+        direction,
       });
+    }
+
+    if (effectiveSocket && connected && gameCode) {
+      console.log(
+        `Enviando controller_direction con dirección ${direction} a sala ${gameCode}`
+      );
+
+      effectiveSocket.emit('controller_direction', {
+        roomCode: gameCode,
+        direction,
+      });
+    } else {
+      console.warn(
+        'No se puede enviar comando: Socket no conectado o código de sala faltante'
+      );
     }
 
     setTimeout(() => {
@@ -134,23 +183,48 @@ export default function ControllerScreen() {
     }, 200);
   };
 
-  // Manejar pulsación del botón central
   const handleCenterPress = () => {
     setLastPressed('enter');
     setActiveButton('enter');
     Vibration.vibrate(50);
 
-    if (socket && connected) {
-      socket.emit('send_controller_command', {
+    console.log('Intentando enviar ENTER');
+    console.log(`Socket conectado: ${!!socket}`);
+    console.log(`Conexión: ${connected}`);
+    console.log(`Código de sala: ${gameCode}`);
+
+    if (socket && connected && gameCode) {
+      console.log(`Enviando controller_enter a sala ${gameCode}`);
+
+      // Usar evento específico para enter
+      socket.emit('controller_enter', {
         roomCode: gameCode,
-        action: 'confirm_selection',
       });
+    } else {
+      console.warn(
+        'No se puede enviar comando: Socket no conectado o código de sala faltante'
+      );
     }
 
     setTimeout(() => {
       setActiveButton(null);
     }, 200);
   };
+  // Añade un socket listener para que la web informe al controlador qué pantalla está activa
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleScreenChange = (data) => {
+      console.log('Web screen changed:', data);
+      setCurrentWebScreen(data.screen);
+    };
+
+    socket.on('screen_changed', handleScreenChange);
+
+    return () => {
+      socket.off('screen_changed', handleScreenChange);
+    };
+  }, [socket]);
 
   // Abrir menú
   const openMenu = () => {
