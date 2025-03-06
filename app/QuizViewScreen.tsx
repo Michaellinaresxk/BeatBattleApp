@@ -25,6 +25,11 @@ export default function QuizViewScreen() {
   const { gameCode, nickname } = useLocalSearchParams();
   const [selectedOption, setSelectedOption] = useState(null);
   const [timeLeft, setTimeLeft] = useState(30);
+
+  const [gameStarted, setGameStarted] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedCategoryType, setSelectedCategoryType] = useState(null);
+
   const [question, setQuestion] = useState({
     text: 'Waiting for the first question...',
     options: {
@@ -159,6 +164,36 @@ export default function QuizViewScreen() {
     };
   }, [socket, router, selectedOption]);
 
+  useEffect(() => {
+    if (!socket) return;
+
+    console.log('📱 Configurando listener para game_started en QuizViewScreen');
+
+    const handleGameStarted = (data) => {
+      console.log('🎮 Evento game_started recibido en QuizViewScreen:', data);
+
+      // Establecer gameStarted a true
+      setGameStarted(true);
+
+      if (data.category) {
+        setSelectedCategory(data.category);
+      }
+
+      if (data.categoryType) {
+        setSelectedCategoryType(data.categoryType);
+      }
+
+      // Si hemos recibido el evento, estamos listos para jugar
+      // Aquí no necesitamos navegar ya que estamos en la pantalla correcta
+    };
+
+    socket.on('game_started', handleGameStarted);
+
+    return () => {
+      socket.off('game_started', handleGameStarted);
+    };
+  }, [socket]);
+
   const handleOptionSelect = (option) => {
     console.log('Selecting option:', option);
     if (selectedOption === null && !questionEnded && timeLeft > 0) {
@@ -182,30 +217,6 @@ export default function QuizViewScreen() {
       setQuestionEnded(false);
     }
   };
-
-  // if (!connected || error) {
-  //   return (
-  //     <View style={styles.container}>
-  //       <LinearGradient
-  //         colors={['#0F0F19', '#1F1F2F', '#0A0A14']}
-  //         start={{ x: 0, y: 0 }}
-  //         end={{ x: 1, y: 1 }}
-  //         style={styles.background}
-  //       />
-  //       <View style={styles.errorContainer}>
-  //         <Text style={styles.errorText}>
-  //           {error ? `Error: ${error}` : 'Connecting to server...'}
-  //         </Text>
-  //         <TouchableOpacity
-  //           style={styles.backButton}
-  //           onPress={() => router.push('/EntryCodeScreen')}
-  //         >
-  //           <Text style={styles.backButtonText}>Back to Entry</Text>
-  //         </TouchableOpacity>
-  //       </View>
-  //     </View>
-  //   );
-  // }
 
   if (gameEnded) {
     return (

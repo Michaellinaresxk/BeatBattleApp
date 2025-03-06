@@ -148,13 +148,14 @@ export default function ControllerScreen() {
     Vibration.vibrate(50);
 
     if (socket && connected) {
-      console.log(`Enviando comando ENTER/OK para sala ${gameCode}`);
+      console.log(`📱 Enviando comando ENTER/OK para sala ${gameCode}`);
 
-      // Enviar ambos formatos para asegurar compatibilidad
+      // Enviar el evento con formato consistente que incluya siempre el roomCode
       socket.emit('controller_enter', {
         roomCode: gameCode,
       });
 
+      // También enviar en formato alternativo para compatibilidad
       socket.emit('send_controller_command', {
         roomCode: gameCode,
         action: 'confirm_selection',
@@ -197,6 +198,39 @@ export default function ControllerScreen() {
   const getCurrentScreenInfo = useCallback(() => {
     return `Screen: ${gameInfo.currentScreen || 'unknown'}`;
   }, [gameInfo.currentScreen]);
+
+  useEffect(() => {
+    if (!socket || !connected) return;
+
+    // Escuchar el evento game_started solo cuando realmente esté listo
+    const handleGameStarted = (data) => {
+      console.log('🎮 Evento game_started recibido en ControllerScreen:', data);
+
+      // Solo navegar si el juego realmente está listo (verificar gameReady flag)
+      if (data && data.gameReady === true && data.roomCode === gameCode) {
+        console.log(
+          '📱 El juego está completamente listo, navegando a QuizViewScreen'
+        );
+        router.push({
+          pathname: '/QuizViewScreen',
+          params: {
+            gameCode: gameCode,
+            nickname: nickname,
+          },
+        });
+      } else {
+        console.log(
+          '⚠️ Ignorando evento game_started porque el juego no está completamente listo'
+        );
+      }
+    };
+
+    socket.on('game_started', handleGameStarted);
+
+    return () => {
+      socket.off('game_started', handleGameStarted);
+    };
+  }, [socket, connected, gameCode, nickname, router]);
 
   return (
     <View style={styles.container}>
