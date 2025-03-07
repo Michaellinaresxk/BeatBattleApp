@@ -1,5 +1,4 @@
 'use client';
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -32,7 +31,6 @@ export default function ControllerScreen() {
     currentScreen: 'waiting',
   });
 
-  const [isReady, setIsReady] = useState(false);
   const {
     socket,
     connected,
@@ -48,27 +46,26 @@ export default function ControllerScreen() {
   } = useSocketConnection(gameCode as string, nickname as string);
 
   useEffect(() => {
-    console.log('Datos de inicialización:', { gameCode, nickname });
+    console.log('Initialization data:', { gameCode, nickname });
     if (!gameCode || !nickname) {
-      console.warn('Datos incompletos para la conexión del socket');
+      console.warn('Incomplete data for socket connection');
     }
   }, [gameCode, nickname]);
 
-  // Añade un efecto para manejar el caso cuando no hay conexión
   useEffect(() => {
     if (!connected && !error) {
-      console.log('Esperando conexión al servidor en ControllerScreen...');
+      console.log('Waiting for server connection on ControllerScreen...');
     } else if (connected) {
-      console.log('Conexión establecida en ControllerScreen!');
+      console.log('Connection established in ControllerScreen!');
     }
   }, [connected, error]);
 
-  // Escuchar actualizaciones sobre la pantalla actual
+  // Listen to updates on the current screen
   useEffect(() => {
     if (!socket || !connected) return;
 
     const handleScreenChanged = (data) => {
-      console.log('Pantalla cambiada:', data);
+      console.log('Changed screen:', data);
       setGameInfo((prev) => ({
         ...prev,
         currentScreen: data.screen || prev.currentScreen,
@@ -104,23 +101,22 @@ export default function ControllerScreen() {
   useEffect(() => {
     if (error) {
       Alert.alert(
-        'Error de Conexión',
-        `No se pudo conectar al servidor: ${error}`,
+        'Connection Error',
+        `Could not connect to the server: ${error}`,
         [
           {
-            text: 'Reintentar',
+            text: 'Retry',
             onPress: () => retryConnection(),
           },
           {
-            text: 'Volver',
+            text: 'Back to',
             onPress: () => router.back(),
           },
         ]
       );
     }
   }, [error, router, retryConnection]);
-
-  // Manejar eventos del controlador - Mejorar con useCallback para evitar redeclaraciones
+  // Handle controller events - Improve with useCallback to avoid redeclarations
   const handleDirectionPress = useCallback(
     (direction) => {
       setLastPressed(direction);
@@ -128,9 +124,9 @@ export default function ControllerScreen() {
       Vibration.vibrate(30);
 
       if (socket && connected) {
-        console.log(`Enviando dirección: ${direction} para sala ${gameCode}`);
+        console.log(`Sending address: ${direction}  for room ${gameCode}`);
 
-        // Enviar ambos formatos para asegurar compatibilidad
+        // Send both formats to ensure compatibility
         socket.emit('controller_direction', {
           roomCode: gameCode,
           direction: direction,
@@ -150,35 +146,32 @@ export default function ControllerScreen() {
     [socket, connected, gameCode]
   );
 
-  // Manejar pulsación del botón central
+  // Manage center button press
   const handleCenterPress = useCallback(() => {
     setLastPressed('enter');
     setActiveButton('enter');
     Vibration.vibrate(50);
 
-    console.log('Intentando enviar ENTER');
-    console.log(`Socket conectado: ${!!socket}`);
-    console.log(`Conexión: ${connected}`);
-    console.log(`Código de sala: ${gameCode}`);
+    console.log('Attempting to send ENTER');
+    console.log(`Socket connected: ${!!socket}`);
+    console.log(`Connection: ${connected}`);
+    console.log(`Room code: ${gameCode}`);
 
     if (socket && connected && gameCode) {
-      console.log(`Enviando controller_enter a sala ${gameCode}`);
-
-      // Usar evento específico para enter
+      console.log(`Sending controller_enter to room ${gameCode}`);
       socket.emit('controller_enter', {
         roomCode: gameCode,
       });
     } else {
       console.warn(
-        'No se puede enviar comando: Socket no conectado o código de sala faltante'
+        'Unable to send command: Socket not connected or missing room code'
       );
     }
 
     setTimeout(() => {
       setActiveButton(null);
     }, 200);
-  };
-  // Añade un socket listener para que la web informe al controlador qué pantalla está activa
+  }, [socket, connected, gameCode]);
   useEffect(() => {
     if (!socket) return;
 
@@ -221,7 +214,7 @@ export default function ControllerScreen() {
     return 'No category selected';
   }, [selectedCategoryType, selectedCategory]);
 
-  // Mostrar pantalla actual
+  // Show current screen
   const getCurrentScreenInfo = useCallback(() => {
     return `Screen: ${gameInfo.currentScreen || 'unknown'}`;
   }, [gameInfo.currentScreen]);
@@ -229,15 +222,16 @@ export default function ControllerScreen() {
   useEffect(() => {
     if (!socket || !connected) return;
 
-    // Escuchar el evento game_started solo cuando realmente esté listo
+    // Listen to the game_started event only when it is really ready
     const handleGameStarted = (data) => {
-      console.log('🎮 Evento game_started recibido en ControllerScreen:', data);
+      console.log(
+        '🎮 //game_started event received on ControllerScreen:',
+        data
+      );
 
-      // Solo navegar si el juego realmente está listo (verificar gameReady flag)
+      // Only browse if the game is really ready (check gameReady flag)
       if (data && data.gameReady === true && data.roomCode === gameCode) {
-        console.log(
-          '📱 El juego está completamente listo, navegando a QuizViewScreen'
-        );
+        console.log('📱 Game is fully ready, navigating to QuizViewScreen');
         router.push({
           pathname: '/QuizViewScreen',
           params: {
@@ -247,7 +241,7 @@ export default function ControllerScreen() {
         });
       } else {
         console.log(
-          '⚠️ Ignorando evento game_started porque el juego no está completamente listo'
+          '⚠️ Ignoring game_started event because the game is not completely ready'
         );
       }
     };
@@ -311,7 +305,7 @@ export default function ControllerScreen() {
         </Text>
       </View>
 
-      {/* Información sobre último botón pulsado */}
+      {/* Information about the last button pressed */}
       {lastPressed && (
         <View style={styles.lastPressedContainer}>
           <Text style={styles.lastPressedText}>
