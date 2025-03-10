@@ -306,17 +306,25 @@ export function useSocketConnection(gameCode, nickname) {
       });
 
       newSocket.on('timer_update', (timeRemaining) => {
-        console.log('Timer update:', timeRemaining);
-        setTimeLeft(timeRemaining);
+        // Registrar cada actualización con timestamp para depuración
+        const now = new Date();
+        const timestamp = `${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}.${now.getMilliseconds()}`;
+        console.log(`⏱️ [${timestamp}] Timer update: ${timeRemaining}s`);
+
+        // Actualizar solo si es un número válido y diferente al valor actual
+        if (typeof timeRemaining === 'number' && timeRemaining >= 0) {
+          setTimeLeft(timeRemaining);
+        }
 
         // Si el tiempo llega a cero, marcar la pregunta como terminada
         if (timeRemaining === 0) {
+          console.log('⏱️ Timer reached zero, marking question as ended');
           setQuestionEnded(true);
         }
       });
 
       newSocket.on('question_ended', (data) => {
-        console.log('Question ended:', data);
+        console.log('Question ended event received:', data);
         setQuestionEnded(true);
 
         // Update correct answer from the event data
@@ -580,6 +588,7 @@ export function useSocketConnection(gameCode, nickname) {
     selectedCategoryType,
     timeLeft,
     questionEnded,
+    setQuestionEnded,
     correctAnswer,
     gamePhase,
     selectionComplete,

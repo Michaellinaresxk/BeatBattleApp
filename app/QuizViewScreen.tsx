@@ -38,6 +38,7 @@ export default function QuizViewScreen() {
     questionEnded,
     correctAnswer,
     answerSubmitted,
+    setQuestionEnded,
     submitAnswer,
     requestCurrentQuestion,
     requestNextQuestion,
@@ -82,10 +83,7 @@ export default function QuizViewScreen() {
         Vibration.vibrate(150); // Vibración simple para respuesta incorrecta
       }
 
-      // No necesitamos actualizar correctAnswer manualmente,
-      // ya que viene del hook useSocketConnection
-
-      // Solo actualizar el estado de pregunta finalizada ya que no tenemos setCorrectAnswer
+      // Solo actualizar el estado de pregunta finalizada
       setTimeout(() => {
         setQuestionEnded(true);
       }, 1000);
@@ -129,6 +127,11 @@ export default function QuizViewScreen() {
       setAnswerResult('timeout');
     }
   }, [timeLeft, selectedOption]);
+
+  // Monitorear cambios en el temporizador para depuración
+  useEffect(() => {
+    console.log(`⏱️ [QuizViewScreen] timeLeft changed: ${timeLeft}s`);
+  }, [timeLeft]);
 
   const handleStartQuiz = () => {
     console.log('Starting quiz, requesting first question');
@@ -289,6 +292,17 @@ export default function QuizViewScreen() {
             {timeLeft}
           </Text>
         </View>
+      </View>
+      <View style={styles.timerProgressContainer}>
+        <View
+          style={[
+            styles.timerProgressBar,
+            {
+              width: `${(timeLeft / (currentQuestion.timeLimit || 30)) * 100}%`,
+              backgroundColor: timeLeft < 10 ? '#FF5353' : '#5F25FF',
+            },
+          ]}
+        />
       </View>
 
       <QuestionDisplay question={questionText} />
@@ -554,5 +568,19 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 22,
     fontWeight: 'bold',
+  },
+
+  timerProgressContainer: {
+    height: 8,
+    backgroundColor: 'rgba(40, 40, 60, 0.4)',
+    borderRadius: 4,
+    marginHorizontal: 20,
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  timerProgressBar: {
+    height: '100%',
+    borderRadius: 4,
+    width: '100%',
   },
 });
