@@ -33,6 +33,7 @@ export function useSocketConnection(gameCode, nickname) {
   const [gamePhase, setGamePhase] = useState('selection'); // 'selection', 'category', 'game'
   const roomCodeRef = useRef(gameCode);
   const [selectionComplete, setSelectionComplete] = useState(false);
+  const [answerSubmitted, setAnswerSubmitted] = useState(false);
 
   // Actualizar la referencia cuando cambia el gameCode
   useEffect(() => {
@@ -64,7 +65,7 @@ export function useSocketConnection(gameCode, nickname) {
         transports: ['websocket'], // Usar solo websocket para mejor rendimiento
         forceNew: true,
         reconnection: true,
-        reconnectionAttempts: 10, // Aumentado para más intentos
+        reconnectionAttempts: Infinity, // Aumentado para más intentos
         reconnectionDelay: 1000,
         timeout: 30000, // Timeout más largo (30 segundos)
         path: '/socket.io',
@@ -189,7 +190,6 @@ export function useSocketConnection(gameCode, nickname) {
           setSelectionComplete(true);
         }
       });
-
       newSocket.on('game_started', (data) => {
         console.log('🎮 Game started event received:', data);
         setGameStarted(true);
@@ -242,6 +242,7 @@ export function useSocketConnection(gameCode, nickname) {
         // Reset question state
         setQuestionEnded(false);
         setTimeLeft(data.timeLimit || 30);
+        setAnswerSubmitted(false);
 
         // Process and store the question data
         if (data.question && data.options) {
@@ -282,9 +283,36 @@ export function useSocketConnection(gameCode, nickname) {
         }
       });
 
+      // Mejorado: Manejar el evento answer_result
+      newSocket.on('answer_result', (data) => {
+        console.log('Answer result received:', data);
+
+        // Actualizar el estado de la respuesta correcta si se proporciona
+        if (data.correctAnswer) {
+          setCorrectAnswer(data.correctAnswer);
+        }
+
+        // Proporcionar feedback táctil basado en si la respuesta es correcta
+        if (data.correct) {
+          Vibration.vibrate([0, 70, 50, 70]); // Patrón de vibración para respuesta correcta
+        } else {
+          Vibration.vibrate(150); // Vibración simple para respuesta incorrecta
+        }
+
+        // Marcar la pregunta como terminada después de un breve retraso
+        setTimeout(() => {
+          setQuestionEnded(true);
+        }, 1000);
+      });
+
       newSocket.on('timer_update', (timeRemaining) => {
         console.log('Timer update:', timeRemaining);
         setTimeLeft(timeRemaining);
+
+        // Si el tiempo llega a cero, marcar la pregunta como terminada
+        if (timeRemaining === 0) {
+          setQuestionEnded(true);
+        }
       });
 
       newSocket.on('question_ended', (data) => {
@@ -389,7 +417,7 @@ export function useSocketConnection(gameCode, nickname) {
 
   // Submit answer to current question
   const submitAnswer = useCallback(
-    (answer) => {
+    (answer: any) => {
       if (!socketRef.current || !connected || !gameStarted) {
         console.error(
           'Cannot submit answer: not connected or game not started'
@@ -398,12 +426,25 @@ export function useSocketConnection(gameCode, nickname) {
       }
 
       console.log('Submitting answer:', answer);
+      setAnswerSubmitted(true);
+
+      // Enviar la respuesta al servidor
       socketRef.current.emit('submit_answer', {
         roomCode: roomCodeRef.current,
         answer: answer,
       });
+
+      // Si no recibimos respuesta después de 3 segundos, mostrar el botón de siguiente pregunta
+      setTimeout(() => {
+        if (!questionEnded) {
+          console.log(
+            'No se recibió respuesta del servidor, mostrando botón de siguiente pregunta'
+          );
+          setQuestionEnded(true);
+        }
+      }, 3000);
     },
-    [connected, gameStarted]
+    [connected, gameStarted, questionEnded]
   );
 
   // Request current question
@@ -413,11 +454,26 @@ export function useSocketConnection(gameCode, nickname) {
       return;
     }
 
-    console.log('Requesting current question for room:', roomCodeRef.current);
+    console.log(
+      'Explicitly requesting current question for room:',
+      roomCodeRef.current
+    );
     socketRef.current.emit('request_current_question', {
       roomCode: roomCodeRef.current,
     });
-  }, [connected]);
+
+    // Añadir un tiempo de espera para volver a intentar si no recibimos respuesta
+    setTimeout(() => {
+      if (!currentQuestion) {
+        console.log('No question received after timeout, requesting again');
+        if (socketRef.current && connected) {
+          socketRef.current.emit('request_current_question', {
+            roomCode: roomCodeRef.current,
+          });
+        }
+      }
+    }, 3000);
+  }, [connected, currentQuestion]);
 
   // Request next question
   const requestNextQuestion = useCallback(() => {
@@ -430,7 +486,27 @@ export function useSocketConnection(gameCode, nickname) {
     socketRef.current.emit('request_next_question', {
       roomCode: roomCodeRef.current,
     });
-  }, [connected]);
+
+    // Resetear estados para la siguiente pregunta
+    setAnswerSubmitted(false);
+    setQuestionEnded(false);
+    setCorrectAnswer(null);
+
+    // Mostrar estado de carga hasta que llegue la nueva pregunta
+    setCurrentQuestion(null);
+
+    // Establecer un tiempo de espera para volver a intentar si no recibimos la siguiente pregunta
+    setTimeout(() => {
+      if (!currentQuestion) {
+        console.log('No new question received after timeout, requesting again');
+        if (socketRef.current && connected) {
+          socketRef.current.emit('request_next_question', {
+            roomCode: roomCodeRef.current,
+          });
+        }
+      }
+    }, 5000);
+  }, [connected, currentQuestion]);
 
   // Leave room
   const leaveRoom = useCallback(() => {
@@ -507,6 +583,7 @@ export function useSocketConnection(gameCode, nickname) {
     correctAnswer,
     gamePhase,
     selectionComplete,
+    answerSubmitted,
     toggleReady,
     submitAnswer,
     requestCurrentQuestion,
