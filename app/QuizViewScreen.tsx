@@ -27,6 +27,7 @@ export default function QuizViewScreen() {
   const [answerResult, setAnswerResult] = useState(null);
   const [gameEnded, setGameEnded] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [quizStarted, setQuizStarted] = useState(false);
 
   const {
     socket,
@@ -36,6 +37,7 @@ export default function QuizViewScreen() {
     timeLeft,
     questionEnded,
     correctAnswer,
+    answerSubmitted,
     submitAnswer,
     requestCurrentQuestion,
     requestNextQuestion,
@@ -48,28 +50,21 @@ export default function QuizViewScreen() {
     }
   }, [gameCode, router]);
 
-  // Request current question when component mounts
+  // Manejo inicial cuando se monta el componente
   useEffect(() => {
     if (connected && socket) {
-      console.log('QuizViewScreen mounted, requesting current question');
-      requestCurrentQuestion();
-
-      // Set a timeout to check if we received a question
-      const timer = setTimeout(() => {
-        if (!currentQuestion) {
-          console.log('No question received after timeout, requesting again');
-          requestCurrentQuestion();
-        }
-      }, 2000);
-
-      return () => clearTimeout(timer);
+      console.log('QuizViewScreen mounted, connection ready');
+      setLoading(false);
+      // No solicitamos automáticamente la pregunta - esperaremos a que el usuario presione Start
     }
-  }, [connected, socket, requestCurrentQuestion, currentQuestion]);
+  }, [connected, socket]);
 
   // Update loading state when question is received
   useEffect(() => {
     if (currentQuestion) {
       setLoading(false);
+      // Si tenemos una pregunta, asumimos que el quiz ha comenzado
+      setQuizStarted(true);
     }
   }, [currentQuestion]);
 
@@ -81,10 +76,19 @@ export default function QuizViewScreen() {
       console.log('Answer result received:', data);
       if (data.correct) {
         setAnswerResult('correct');
+        Vibration.vibrate([0, 70, 50, 70]); // Patrón de vibración para respuesta correcta
       } else {
         setAnswerResult('incorrect');
+        Vibration.vibrate(150); // Vibración simple para respuesta incorrecta
       }
-      Vibration.vibrate(data.correct ? [0, 70, 50, 70] : 150);
+
+      // No necesitamos actualizar correctAnswer manualmente,
+      // ya que viene del hook useSocketConnection
+
+      // Solo actualizar el estado de pregunta finalizada ya que no tenemos setCorrectAnswer
+      setTimeout(() => {
+        setQuestionEnded(true);
+      }, 1000);
     };
 
     const handleGameEnded = (data) => {
@@ -123,9 +127,14 @@ export default function QuizViewScreen() {
   useEffect(() => {
     if (timeLeft === 0 && !selectedOption) {
       setAnswerResult('timeout');
-      Vibration.vibrate(150);
     }
   }, [timeLeft, selectedOption]);
+
+  const handleStartQuiz = () => {
+    console.log('Starting quiz, requesting first question');
+    setQuizStarted(true);
+    requestCurrentQuestion();
+  };
 
   const handleOptionSelect = (option) => {
     console.log('Selecting option:', option);
@@ -133,6 +142,17 @@ export default function QuizViewScreen() {
       setSelectedOption(option);
       Vibration.vibrate(30);
       submitAnswer(option);
+
+      // Añadir un estado local para mostrar que se está esperando la respuesta
+      setAnswerResult('waiting');
+
+      // Establecer un timeout para mostrar el resultado si el servidor no responde
+      setTimeout(() => {
+        if (answerResult === 'waiting') {
+          setAnswerResult('timeout');
+          setQuestionEnded(true);
+        }
+      }, 5000); // 5 segundos de espera
     }
   };
 
@@ -140,6 +160,7 @@ export default function QuizViewScreen() {
     requestNextQuestion();
     setSelectedOption(null);
     setAnswerResult(null);
+    setLoading(true); // Mostrar pantalla de carga mientras se carga la siguiente pregunta
   };
 
   const handleRetry = () => {
@@ -169,6 +190,37 @@ export default function QuizViewScreen() {
           </TouchableOpacity>
         </View>
       </View>
+    );
+  }
+
+  // Pantalla de inicio del quiz con botón Start
+  if (!quizStarted && connected) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <LinearGradient
+          colors={['#0F0F19', '#1F1F2F', '#0A0A14']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.background}
+        />
+        <View style={styles.startContainer}>
+          <Text style={styles.startTitle}>Ready to start?</Text>
+          <Text style={styles.startSubtitle}>
+            Press the button when you're ready to begin the quiz
+          </Text>
+          <TouchableOpacity
+            style={styles.startButton}
+            onPress={handleStartQuiz}
+          >
+            <LinearGradient
+              colors={['#5F25FF', '#4A6BF5']}
+              style={styles.startButtonGradient}
+            >
+              <Text style={styles.startButtonText}>Start Quiz</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -244,7 +296,7 @@ export default function QuizViewScreen() {
       <AnswerOptions
         options={options}
         selectedOption={selectedOption}
-        answerResult={correctAnswer}
+        correctAnswer={correctAnswer}
         onOptionSelect={handleOptionSelect}
         questionEnded={questionEnded}
         timeLeft={timeLeft}
@@ -254,6 +306,8 @@ export default function QuizViewScreen() {
         <View style={styles.statusContainer}>
           {answerResult === null ? (
             <Text style={styles.waitingText}>Waiting for result...</Text>
+          ) : answerResult === 'waiting' ? (
+            <Text style={styles.waitingText}>Checking answer...</Text>
           ) : answerResult === 'correct' ? (
             <Text style={styles.correctText}>Correct Answer!</Text>
           ) : answerResult === 'timeout' ? (
@@ -264,7 +318,7 @@ export default function QuizViewScreen() {
         </View>
       )}
 
-      {(questionEnded || answerResult !== null) && (
+      {questionEnded && (
         <TouchableOpacity
           style={styles.nextButton}
           onPress={handleNextQuestion}
@@ -460,5 +514,45 @@ const styles = StyleSheet.create({
     color: '#aaaaaa',
     fontSize: 12,
     marginBottom: 5,
+  },
+  // Estilos para la pantalla de inicio del quiz
+  startContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  startTitle: {
+    color: '#ffffff',
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  startSubtitle: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 18,
+    marginBottom: 40,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  startButton: {
+    width: '80%',
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#5F25FF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  startButtonGradient: {
+    padding: 18,
+    alignItems: 'center',
+  },
+  startButtonText: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: 'bold',
   },
 });
