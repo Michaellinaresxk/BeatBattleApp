@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
-import { Alert } from 'react-native';
+import { Alert, Vibration } from 'react-native';
 import { router } from 'expo-router';
 
 // IP fija confirmada - utiliza tu dirección IP real
@@ -27,6 +27,17 @@ export function useSocketConnection(gameCode, nickname) {
   const MAX_CONNECTION_ATTEMPTS = 5;
   const [currentScreen, setCurrentScreen] = useState('waiting');
   const [availableOptions, setAvailableOptions] = useState([]);
+  const [timeLeft, setTimeLeft] = useState(30);
+  const [questionEnded, setQuestionEnded] = useState(false);
+  const [correctAnswer, setCorrectAnswer] = useState(null);
+  const [gamePhase, setGamePhase] = useState('selection'); // 'selection', 'category', 'game'
+  const roomCodeRef = useRef(gameCode);
+  const [selectionComplete, setSelectionComplete] = useState(false);
+
+  // Actualizar la referencia cuando cambia el gameCode
+  useEffect(() => {
+    roomCodeRef.current = gameCode;
+  }, [gameCode]);
 
   // Conectar al socket cuando se monta el componente
   useEffect(() => {
@@ -156,17 +167,134 @@ export function useSocketConnection(gameCode, nickname) {
         });
       });
 
+      // Escuchar eventos de selección de categoría
+      newSocket.on('category_selected', (data) => {
+        console.log('Category selected event:', data);
+        if (data.categoryId) {
+          setSelectedCategory(data.categoryId);
+        }
+      });
+
+      newSocket.on('category_updated', (data) => {
+        console.log('Category updated event:', data);
+        if (data.categoryId) {
+          setSelectedCategory(data.categoryId);
+        }
+        if (data.categoryType) {
+          setSelectedCategoryType(data.categoryType);
+        }
+
+        // Marcar que la selección está completa
+        if (data.categoryId && data.categoryType) {
+          setSelectionComplete(true);
+        }
+      });
+
       newSocket.on('game_started', (data) => {
-        console.log('Game started event:', data);
+        console.log('🎮 Game started event received:', data);
         setGameStarted(true);
         setGameStatus('playing');
-        if (data.category) setSelectedCategory(data.category);
-        if (data.categoryType) setSelectedCategoryType(data.categoryType);
+        setGamePhase('game');
+
+        if (data.category) {
+          setSelectedCategory(data.category);
+        }
+        if (data.categoryType) {
+          setSelectedCategoryType(data.categoryType);
+        }
+
+        // Verificar si tenemos toda la información necesaria para comenzar
+        const hasCategory = data.category || selectedCategory;
+        const hasCategoryType = data.categoryType || selectedCategoryType;
+        const isGameReady = data.gameReady === true;
+
+        console.log('Game start conditions:', {
+          hasCategory,
+          hasCategoryType,
+          isGameReady,
+          selectionComplete:
+            selectionComplete || (hasCategory && hasCategoryType),
+        });
+
+        // Solo navegar si el juego está realmente listo para comenzar
+        if (isGameReady && hasCategory && hasCategoryType) {
+          setSelectionComplete(true);
+
+          // Navegar a QuizViewScreen cuando recibimos game_started con toda la información
+          console.log(
+            'Navigating to QuizViewScreen from game_started event - SELECTION COMPLETE'
+          );
+          router.push({
+            pathname: '/QuizViewScreen',
+            params: {
+              gameCode: roomCodeRef.current,
+              nickname: nickname,
+            },
+          });
+        } else {
+          console.log('Not navigating yet - waiting for complete selection');
+        }
       });
 
       newSocket.on('new_question', (data) => {
-        console.log('New question event:', data);
-        setCurrentQuestion(data);
+        console.log('New question event received:', JSON.stringify(data));
+
+        // Reset question state
+        setQuestionEnded(false);
+        setTimeLeft(data.timeLimit || 30);
+
+        // Process and store the question data
+        if (data.question && data.options) {
+          let formattedOptions = {};
+
+          // Handle both array and object formats for options
+          if (Array.isArray(data.options)) {
+            formattedOptions = data.options.reduce((acc, option) => {
+              if (option && option.id && option.text) {
+                acc[option.id] = option.text;
+              }
+              return acc;
+            }, {});
+          } else if (typeof data.options === 'object') {
+            formattedOptions = data.options;
+          }
+
+          setCurrentQuestion({
+            text: data.question.question || 'No question text',
+            options: formattedOptions,
+            id: data.question.id,
+            correctOptionId: data.question.correctOptionId,
+            order: data.question.order,
+            totalQuestions: data.question.totalQuestions,
+            timeLimit: data.timeLimit || 30,
+          });
+
+          if (data.question.correctOptionId) {
+            setCorrectAnswer(data.question.correctOptionId);
+          }
+        } else {
+          // Si data no tiene la estructura esperada, intentamos adaptarla
+          setCurrentQuestion({
+            text: data.question || 'No question text',
+            options: data.options || {},
+            timeLimit: data.timeLimit || 30,
+          });
+        }
+      });
+
+      newSocket.on('timer_update', (timeRemaining) => {
+        console.log('Timer update:', timeRemaining);
+        setTimeLeft(timeRemaining);
+      });
+
+      newSocket.on('question_ended', (data) => {
+        console.log('Question ended:', data);
+        setQuestionEnded(true);
+
+        // Update correct answer from the event data
+        if (data && data.correctAnswer) {
+          setCorrectAnswer(data.correctAnswer);
+        }
       });
 
       newSocket.on('error', (data) => {
@@ -207,7 +335,7 @@ export function useSocketConnection(gameCode, nickname) {
         [{ text: 'OK' }]
       );
     }
-  }, [gameCode, nickname]);
+  }, [gameCode, nickname, router]);
 
   useEffect(() => {
     if (!socketRef.current || !connected) return;
@@ -242,7 +370,7 @@ export function useSocketConnection(gameCode, nickname) {
 
     console.log('Toggling ready state:', newReadyState);
     socketRef.current.emit('toggle_ready', {
-      roomCode: gameCode,
+      roomCode: roomCodeRef.current,
       isReady: newReadyState,
     });
 
@@ -252,12 +380,12 @@ export function useSocketConnection(gameCode, nickname) {
       router.push({
         pathname: '/ControllerScreen',
         params: {
-          gameCode,
-          nickname,
+          gameCode: roomCodeRef.current,
+          nickname: nickname,
         },
       });
     }
-  }, [connected, isReady, gameCode, router, nickname]);
+  }, [connected, isReady, nickname, router]);
 
   // Submit answer to current question
   const submitAnswer = useCallback(
@@ -271,12 +399,38 @@ export function useSocketConnection(gameCode, nickname) {
 
       console.log('Submitting answer:', answer);
       socketRef.current.emit('submit_answer', {
-        roomCode: gameCode,
+        roomCode: roomCodeRef.current,
         answer: answer,
       });
     },
-    [connected, gameStarted, gameCode]
+    [connected, gameStarted]
   );
+
+  // Request current question
+  const requestCurrentQuestion = useCallback(() => {
+    if (!socketRef.current || !connected) {
+      console.error('Cannot request question: not connected');
+      return;
+    }
+
+    console.log('Requesting current question for room:', roomCodeRef.current);
+    socketRef.current.emit('request_current_question', {
+      roomCode: roomCodeRef.current,
+    });
+  }, [connected]);
+
+  // Request next question
+  const requestNextQuestion = useCallback(() => {
+    if (!socketRef.current || !connected) {
+      console.error('Cannot request next question: not connected');
+      return;
+    }
+
+    console.log('Requesting next question for room:', roomCodeRef.current);
+    socketRef.current.emit('request_next_question', {
+      roomCode: roomCodeRef.current,
+    });
+  }, [connected]);
 
   // Leave room
   const leaveRoom = useCallback(() => {
@@ -285,8 +439,8 @@ export function useSocketConnection(gameCode, nickname) {
       return;
     }
 
-    socketRef.current.emit('leave_room', { roomCode: gameCode });
-  }, [connected, gameCode]);
+    socketRef.current.emit('leave_room', { roomCode: roomCodeRef.current });
+  }, [connected]);
 
   // Retry connection - implementación mejorada
   const retryConnection = useCallback(() => {
@@ -311,7 +465,7 @@ export function useSocketConnection(gameCode, nickname) {
   // Función para enviar comandos del controlador
   const sendControllerCommand = useCallback(
     (action, direction, additionalData = {}) => {
-      if (!socketRef.current || !connected || !gameCode) {
+      if (!socketRef.current || !connected) {
         console.error('No se puede enviar comando: no hay conexión');
         return false;
       }
@@ -323,7 +477,7 @@ export function useSocketConnection(gameCode, nickname) {
 
       // Incluir el screen actual para que la app web sepa a qué pantalla va dirigido
       socketRef.current.emit('send_controller_command', {
-        roomCode: gameCode,
+        roomCode: roomCodeRef.current,
         action,
         direction,
         targetScreen: currentScreen,
@@ -334,7 +488,7 @@ export function useSocketConnection(gameCode, nickname) {
       Vibration.vibrate(30);
       return true;
     },
-    [connected, gameCode, currentScreen]
+    [connected, currentScreen]
   );
 
   return {
@@ -348,8 +502,15 @@ export function useSocketConnection(gameCode, nickname) {
     gameStatus,
     selectedCategory,
     selectedCategoryType,
+    timeLeft,
+    questionEnded,
+    correctAnswer,
+    gamePhase,
+    selectionComplete,
     toggleReady,
     submitAnswer,
+    requestCurrentQuestion,
+    requestNextQuestion,
     leaveRoom,
     retryConnection,
     serverUrl: getServerUrl(),
