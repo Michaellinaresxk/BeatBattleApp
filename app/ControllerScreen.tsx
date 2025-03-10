@@ -20,7 +20,6 @@ export default function ControllerScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { gameCode, nickname } = useLocalSearchParams();
-  const [currentWebScreen, setCurrentWebScreen] = useState('selection');
   const [lastPressed, setLastPressed] = useState('');
   const [activeButton, setActiveButton] = useState(null);
   const [selectedOption, setSelectedOption] = useState(null);
@@ -40,6 +39,7 @@ export default function ControllerScreen() {
     gameStarted,
     gameStatus,
     currentQuestion,
+    selectionComplete,
     submitAnswer,
     leaveRoom,
     retryConnection,
@@ -64,7 +64,7 @@ export default function ControllerScreen() {
   useEffect(() => {
     if (!socket || !connected) return;
 
-    const handleScreenChanged = (data) => {
+    const handleScreenChange = (data) => {
       console.log('Changed screen:', data);
       setGameInfo((prev) => ({
         ...prev,
@@ -73,10 +73,10 @@ export default function ControllerScreen() {
       }));
     };
 
-    socket.on('screen_changed', handleScreenChanged);
+    socket.on('screen_changed', handleScreenChange);
 
     return () => {
-      socket.off('screen_changed', handleScreenChanged);
+      socket.off('screen_changed', handleScreenChange);
     };
   }, [socket, connected]);
 
@@ -116,6 +116,7 @@ export default function ControllerScreen() {
       );
     }
   }, [error, router, retryConnection]);
+
   // Handle controller events - Improve with useCallback to avoid redeclarations
   const handleDirectionPress = useCallback(
     (direction) => {
@@ -172,12 +173,16 @@ export default function ControllerScreen() {
       setActiveButton(null);
     }, 200);
   }, [socket, connected, gameCode]);
+
   useEffect(() => {
     if (!socket) return;
 
     const handleScreenChange = (data) => {
       console.log('Web screen changed:', data);
-      setCurrentWebScreen(data.screen);
+      setGameInfo((prev) => ({
+        ...prev,
+        currentScreen: data.screen || prev.currentScreen,
+      }));
     };
 
     socket.on('screen_changed', handleScreenChange);
@@ -219,30 +224,44 @@ export default function ControllerScreen() {
     return `Screen: ${gameInfo.currentScreen || 'unknown'}`;
   }, [gameInfo.currentScreen]);
 
+  // Critical fix: Listen for game_started event and navigate to QuizViewScreen
+  // ONLY when selection is complete
   useEffect(() => {
     if (!socket || !connected) return;
 
-    // Listen to the game_started event only when it is really ready
     const handleGameStarted = (data) => {
-      console.log(
-        '🎮 //game_started event received on ControllerScreen:',
-        data
-      );
+      console.log('🎮 game_started event received on ControllerScreen:', data);
 
-      // Only browse if the game is really ready (check gameReady flag)
-      if (data && data.gameReady === true && data.roomCode === gameCode) {
-        console.log('📱 Game is fully ready, navigating to QuizViewScreen');
-        router.push({
-          pathname: '/QuizViewScreen',
-          params: {
-            gameCode: gameCode,
-            nickname: nickname,
-          },
-        });
-      } else {
+      // Verificar si tenemos toda la información necesaria para comenzar
+      const hasCategory = data.category || selectedCategory;
+      const hasCategoryType = data.categoryType || selectedCategoryType;
+      const isGameReady = data.gameReady === true;
+
+      console.log('Game start conditions:', {
+        hasCategory,
+        hasCategoryType,
+        isGameReady,
+        selectionComplete,
+      });
+
+      // Solo navegar si el juego está realmente listo para comenzar
+      if (isGameReady && hasCategory && hasCategoryType) {
         console.log(
-          '⚠️ Ignoring game_started event because the game is not completely ready'
+          '📱 Game started with complete selection, navigating to QuizViewScreen'
         );
+
+        // Add a small delay to ensure the server has time to prepare the question
+        setTimeout(() => {
+          router.push({
+            pathname: '/QuizViewScreen',
+            params: {
+              gameCode: gameCode,
+              nickname: nickname,
+            },
+          });
+        }, 500);
+      } else {
+        console.log('Not navigating yet - waiting for complete selection');
       }
     };
 
@@ -251,7 +270,32 @@ export default function ControllerScreen() {
     return () => {
       socket.off('game_started', handleGameStarted);
     };
-  }, [socket, connected, gameCode, nickname, router]);
+  }, [
+    socket,
+    connected,
+    gameCode,
+    nickname,
+    router,
+    selectedCategory,
+    selectedCategoryType,
+    selectionComplete,
+  ]);
+
+  // Monitorear cambios en selectionComplete para navegar cuando esté listo
+  useEffect(() => {
+    if (selectionComplete && gameStarted) {
+      console.log(
+        'Selection complete and game started, navigating to QuizViewScreen'
+      );
+      router.push({
+        pathname: '/QuizViewScreen',
+        params: {
+          gameCode: gameCode,
+          nickname: nickname,
+        },
+      });
+    }
+  }, [selectionComplete, gameStarted, gameCode, nickname, router]);
 
   return (
     <View style={styles.container}>
@@ -302,6 +346,9 @@ export default function ControllerScreen() {
         <Text style={styles.screenInfo}>{getCurrentScreenInfo()}</Text>
         <Text style={styles.connectionStatus}>
           {connected ? '✅ Connected' : '❌ Disconnected'}
+        </Text>
+        <Text style={styles.selectionStatus}>
+          Selection: {selectionComplete ? '✅ Complete' : '⏳ Waiting...'}
         </Text>
       </View>
 
@@ -544,6 +591,12 @@ const styles = StyleSheet.create({
   },
   connectionStatus: {
     color: '#ffffff',
+    fontSize: 12,
+    marginTop: 5,
+    fontWeight: 'bold',
+  },
+  selectionStatus: {
+    color: '#ffcc00',
     fontSize: 12,
     marginTop: 5,
     fontWeight: 'bold',

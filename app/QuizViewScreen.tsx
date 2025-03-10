@@ -24,27 +24,22 @@ export default function QuizViewScreen() {
   const router = useRouter();
   const { gameCode, nickname } = useLocalSearchParams();
   const [selectedOption, setSelectedOption] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(30);
-
-  const [gameStarted, setGameStarted] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState(null);
-  const [selectedCategoryType, setSelectedCategoryType] = useState(null);
-
-  const [question, setQuestion] = useState({
-    text: 'Waiting for the first question...',
-    options: {
-      A: '...',
-      B: '...',
-      C: '...',
-      D: '...',
-    },
-  });
   const [answerResult, setAnswerResult] = useState(null);
-  const [correctAnswer, setCorrectAnswer] = useState(null);
-  const [questionEnded, setQuestionEnded] = useState(false);
   const [gameEnded, setGameEnded] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const { socket, connected, error } = useSocketConnection(gameCode);
+  const {
+    socket,
+    connected,
+    error,
+    currentQuestion,
+    timeLeft,
+    questionEnded,
+    correctAnswer,
+    submitAnswer,
+    requestCurrentQuestion,
+    requestNextQuestion,
+  } = useSocketConnection(gameCode, nickname);
 
   useEffect(() => {
     if (!gameCode) {
@@ -53,95 +48,47 @@ export default function QuizViewScreen() {
     }
   }, [gameCode, router]);
 
+  // Request current question when component mounts
+  useEffect(() => {
+    if (connected && socket) {
+      console.log('QuizViewScreen mounted, requesting current question');
+      requestCurrentQuestion();
+
+      // Set a timeout to check if we received a question
+      const timer = setTimeout(() => {
+        if (!currentQuestion) {
+          console.log('No question received after timeout, requesting again');
+          requestCurrentQuestion();
+        }
+      }, 2000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [connected, socket, requestCurrentQuestion, currentQuestion]);
+
+  // Update loading state when question is received
+  useEffect(() => {
+    if (currentQuestion) {
+      setLoading(false);
+    }
+  }, [currentQuestion]);
+
+  // Listen for answer results
   useEffect(() => {
     if (!socket) return;
 
-    // Improved debugging of socket events
-    socket.onAny((event, ...args) => {
-      console.log(`[SOCKET EVENT] ${event}:`, JSON.stringify(args));
-    });
-
-    socket.on('new_question', (data) => {
-      console.log('New question received:', JSON.stringify(data));
-
-      // Safe handling of potentially missing data structure
-      if (!data) {
-        console.error('Received empty data in new_question event');
-        return;
-      }
-
-      // Handle both array and object formats for options
-      let formattedOptions = {};
-
-      if (data.options) {
-        if (Array.isArray(data.options)) {
-          // Convert array format to object format for consistency in mobile
-          formattedOptions = data.options.reduce((acc, option) => {
-            if (option && option.id && option.text) {
-              acc[option.id] = option.text;
-            }
-            return acc;
-          }, {});
-        } else if (typeof data.options === 'object') {
-          formattedOptions = data.options;
-        }
-      }
-
-      console.log('Formatted options:', formattedOptions);
-
-      setQuestion({
-        text: data.question?.question || 'No question text',
-        options: formattedOptions || {},
-      });
-
-      if (data.question?.correctOptionId) {
-        setCorrectAnswer(data.question.correctOptionId);
-      }
-
-      setTimeLeft(data.timeLimit || 30);
-      setSelectedOption(null);
-      setAnswerResult(null);
-      setQuestionEnded(false);
-    });
-
-    socket.on('timer_update', (timeRemaining) => {
-      setTimeLeft(timeRemaining);
-    });
-
-    socket.on('question_ended', (data) => {
-      console.log('Question ended:', JSON.stringify(data));
-      setQuestionEnded(true);
-
-      // Update correct answer from the event data
-      if (data && data.correctAnswer) {
-        setCorrectAnswer(data.correctAnswer);
-      }
-
-      // If user didn't answer, show the correct answer
-      if (selectedOption === null) {
-        setAnswerResult('timeout');
-        Vibration.vibrate(150);
-      }
-    });
-
-    socket.on('answer_result', (data) => {
-      console.log('Answer result:', JSON.stringify(data));
-
+    const handleAnswerResult = (data) => {
+      console.log('Answer result received:', data);
       if (data.correct) {
         setAnswerResult('correct');
       } else {
         setAnswerResult('incorrect');
-        // Store the correct answer for display
-        if (data.correctAnswer) {
-          setCorrectAnswer(data.correctAnswer);
-        }
       }
-
       Vibration.vibrate(data.correct ? [0, 70, 50, 70] : 150);
-    });
+    };
 
-    socket.on('game_ended', (data) => {
-      console.log('Game ended:', JSON.stringify(data));
+    const handleGameEnded = (data) => {
+      console.log('Game ended:', data);
       setGameEnded(true);
       Alert.alert(
         'Game Over',
@@ -153,69 +100,51 @@ export default function QuizViewScreen() {
           },
         ]
       );
-    });
+    };
+
+    socket.on('answer_result', handleAnswerResult);
+    socket.on('game_ended', handleGameEnded);
 
     return () => {
-      socket.off('new_question');
-      socket.off('timer_update');
-      socket.off('question_ended');
-      socket.off('answer_result');
-      socket.off('game_ended');
+      socket.off('answer_result', handleAnswerResult);
+      socket.off('game_ended', handleGameEnded);
     };
-  }, [socket, router, selectedOption]);
+  }, [socket, router]);
 
+  // Reset selected option when new question arrives
   useEffect(() => {
-    if (!socket) return;
+    if (currentQuestion) {
+      setSelectedOption(null);
+      setAnswerResult(null);
+    }
+  }, [currentQuestion]);
 
-    console.log('📱 Configurando listener para game_started en QuizViewScreen');
-
-    const handleGameStarted = (data) => {
-      console.log('🎮 Evento game_started recibido en QuizViewScreen:', data);
-
-      // Establecer gameStarted a true
-      setGameStarted(true);
-
-      if (data.category) {
-        setSelectedCategory(data.category);
-      }
-
-      if (data.categoryType) {
-        setSelectedCategoryType(data.categoryType);
-      }
-
-      // Si hemos recibido el evento, estamos listos para jugar
-      // Aquí no necesitamos navegar ya que estamos en la pantalla correcta
-    };
-
-    socket.on('game_started', handleGameStarted);
-
-    return () => {
-      socket.off('game_started', handleGameStarted);
-    };
-  }, [socket]);
+  // Handle timeout
+  useEffect(() => {
+    if (timeLeft === 0 && !selectedOption) {
+      setAnswerResult('timeout');
+      Vibration.vibrate(150);
+    }
+  }, [timeLeft, selectedOption]);
 
   const handleOptionSelect = (option) => {
     console.log('Selecting option:', option);
     if (selectedOption === null && !questionEnded && timeLeft > 0) {
       setSelectedOption(option);
       Vibration.vibrate(30);
-
-      if (socket) {
-        socket.emit('submit_answer', {
-          roomCode: gameCode,
-          answer: option,
-        });
-      }
+      submitAnswer(option);
     }
   };
 
   const handleNextQuestion = () => {
-    if (socket) {
-      socket.emit('request_next_question', { roomCode: gameCode });
-      setSelectedOption(null);
-      setAnswerResult(null);
-      setQuestionEnded(false);
-    }
+    requestNextQuestion();
+    setSelectedOption(null);
+    setAnswerResult(null);
+  };
+
+  const handleRetry = () => {
+    console.log('Retrying connection and requesting question');
+    requestCurrentQuestion();
   };
 
   if (gameEnded) {
@@ -243,6 +172,51 @@ export default function QuizViewScreen() {
     );
   }
 
+  // If no question is available yet, show loading state
+  if (loading || !currentQuestion) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <LinearGradient
+          colors={['#0F0F19', '#1F1F2F', '#0A0A14']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.background}
+        />
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Waiting for question...</Text>
+          {!connected && (
+            <Text style={styles.errorText}>
+              Not connected to server. Please wait...
+            </Text>
+          )}
+          <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+
+          <View style={styles.debugContainer}>
+            <Text style={styles.debugText}>Debug Info:</Text>
+            <Text style={styles.debugText}>
+              Connected: {connected ? 'Yes' : 'No'}
+            </Text>
+            <Text style={styles.debugText}>Room Code: {gameCode}</Text>
+            <Text style={styles.debugText}>Nickname: {nickname}</Text>
+            <Text style={styles.debugText}>
+              Has Socket: {socket ? 'Yes' : 'No'}
+            </Text>
+            <Text style={styles.debugText}>Error: {error || 'None'}</Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Extract question data safely
+  const questionText =
+    currentQuestion.question?.question ||
+    currentQuestion.text ||
+    'No question text';
+  const options = currentQuestion.options || {};
+
   return (
     <SafeAreaView style={styles.container}>
       <LinearGradient
@@ -265,10 +239,10 @@ export default function QuizViewScreen() {
         </View>
       </View>
 
-      <QuestionDisplay question={question.text} />
+      <QuestionDisplay question={questionText} />
 
       <AnswerOptions
-        options={question.options}
+        options={options}
         selectedOption={selectedOption}
         answerResult={correctAnswer}
         onOptionSelect={handleOptionSelect}
@@ -450,5 +424,41 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginBottom: 30,
     textAlign: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    color: '#ffffff',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+  },
+  retryButton: {
+    backgroundColor: 'rgba(95, 37, 255, 0.7)',
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 12,
+    marginTop: 20,
+  },
+  retryButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  debugContainer: {
+    marginTop: 30,
+    padding: 15,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: 10,
+    width: '90%',
+  },
+  debugText: {
+    color: '#aaaaaa',
+    fontSize: 12,
+    marginBottom: 5,
   },
 });
