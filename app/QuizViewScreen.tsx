@@ -28,6 +28,10 @@ export default function QuizViewScreen() {
   const [gameEnded, setGameEnded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [quizStarted, setQuizStarted] = useState(false);
+  // Estado para almacenar la puntuación
+  const [score, setScore] = useState(0);
+  const [totalCorrect, setTotalCorrect] = useState(0);
+  const [totalWrong, setTotalWrong] = useState(0);
 
   const {
     socket,
@@ -69,7 +73,7 @@ export default function QuizViewScreen() {
     }
   }, [currentQuestion]);
 
-  // Listen for answer results
+  // Listen for answer results - MODIFICADO para actualizar la puntuación
   useEffect(() => {
     if (!socket) return;
 
@@ -78,9 +82,23 @@ export default function QuizViewScreen() {
       if (data.correct) {
         setAnswerResult('correct');
         Vibration.vibrate([0, 70, 50, 70]); // Patrón de vibración para respuesta correcta
+
+        // Actualizar puntuación si está disponible en el evento
+        if (data.score !== undefined) {
+          setScore(data.score);
+        } else {
+          // Incrementar de forma local si no viene en el evento
+          setScore((prevScore) => prevScore + 1);
+        }
+
+        // Actualizar contador de respuestas correctas
+        setTotalCorrect((prev) => prev + 1);
       } else {
         setAnswerResult('incorrect');
         Vibration.vibrate(150); // Vibración simple para respuesta incorrecta
+
+        // Actualizar contador de respuestas incorrectas
+        setTotalWrong((prev) => prev + 1);
       }
 
       // Solo actualizar el estado de pregunta finalizada
@@ -92,16 +110,27 @@ export default function QuizViewScreen() {
     const handleGameEnded = (data) => {
       console.log('Game ended:', data);
       setGameEnded(true);
-      Alert.alert(
-        'Game Over',
-        'The quiz has ended. Check the main screen for results!',
-        [
-          {
-            text: 'OK',
-            onPress: () => router.push('/EntryCodeScreen'),
-          },
-        ]
-      );
+
+      // Mostrar resultados finales con la puntuación
+      let finalMessage =
+        'The quiz has ended. Check the main screen for results!';
+
+      // Si tenemos datos de resultados, mostrar la puntuación final
+      if (data && data.results && data.results[socket.id]) {
+        const myResult = data.results[socket.id];
+        finalMessage = `Game Over!\n\nYour final score: ${myResult.score} points\nCorrect answers: ${myResult.correctAnswers}/${myResult.totalAnswers}`;
+      } else {
+        finalMessage = `Game Over!\n\nYour final score: ${score} points\nCorrect answers: ${totalCorrect}/${
+          totalCorrect + totalWrong
+        }`;
+      }
+
+      Alert.alert('Game Over', finalMessage, [
+        {
+          text: 'OK',
+          onPress: () => router.push('/EntryCodeScreen'),
+        },
+      ]);
     };
 
     socket.on('answer_result', handleAnswerResult);
@@ -111,7 +140,7 @@ export default function QuizViewScreen() {
       socket.off('answer_result', handleAnswerResult);
       socket.off('game_ended', handleGameEnded);
     };
-  }, [socket, router]);
+  }, [socket, router, score, totalCorrect, totalWrong]);
 
   // Reset selected option when new question arrives
   useEffect(() => {
@@ -136,6 +165,10 @@ export default function QuizViewScreen() {
   const handleStartQuiz = () => {
     console.log('Starting quiz, requesting first question');
     setQuizStarted(true);
+    // Reiniciar la puntuación al comenzar un nuevo quiz
+    setScore(0);
+    setTotalCorrect(0);
+    setTotalWrong(0);
     requestCurrentQuestion();
   };
 
@@ -183,7 +216,10 @@ export default function QuizViewScreen() {
         <View style={styles.gameEndedContainer}>
           <Text style={styles.gameEndedText}>Game Over!</Text>
           <Text style={styles.gameEndedSubtext}>
-            Check the main screen for results
+            Your final score: {score} points
+          </Text>
+          <Text style={styles.gameEndedSubtext}>
+            Correct answers: {totalCorrect}/{totalCorrect + totalWrong}
           </Text>
           <TouchableOpacity
             style={styles.backButton}
@@ -293,6 +329,12 @@ export default function QuizViewScreen() {
           </Text>
         </View>
       </View>
+
+      {/* Mostrar puntuación de forma simple */}
+      <View style={styles.scoreDisplay}>
+        <Text style={styles.scoreText}>Score: {score}</Text>
+      </View>
+
       <View style={styles.timerProgressContainer}>
         <View
           style={[
@@ -349,6 +391,7 @@ export default function QuizViewScreen() {
     </SafeAreaView>
   );
 }
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -381,6 +424,20 @@ const styles = StyleSheet.create({
   roomCode: {
     color: '#ffffff',
     fontSize: 18,
+    fontWeight: 'bold',
+  },
+  // Elemento simple para mostrar puntuación
+  scoreDisplay: {
+    alignItems: 'center',
+    paddingVertical: 8,
+    marginHorizontal: 20,
+    marginBottom: 8,
+    backgroundColor: 'rgba(95, 37, 255, 0.3)',
+    borderRadius: 8,
+  },
+  scoreText: {
+    color: '#ffffff',
+    fontSize: 16,
     fontWeight: 'bold',
   },
   timerContainer: {
@@ -569,7 +626,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
   },
-
   timerProgressContainer: {
     height: 8,
     backgroundColor: 'rgba(40, 40, 60, 0.4)',
