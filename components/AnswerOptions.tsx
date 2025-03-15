@@ -24,30 +24,38 @@ export function AnswerOptions({
     text,
   }));
 
-  // Determinar si podemos mostrar los resultados
-  const showResults =
-    questionEnded ||
-    (selectedOption !== null && correctAnswer !== null) ||
-    timeLeft === 0;
+  // Determinar si podemos mostrar los resultados - SOLO cuando questionEnded sea true
+  const showResults = questionEnded;
 
   // Función para determinar el estilo de cada opción
   const getOptionStyle = (optionId: string) => {
+    const baseStyle = styles.option;
     const isSelected = selectedOption === optionId;
     const isCorrect = correctAnswer === optionId;
 
-    if (!showResults) {
-      return isSelected ? styles.selectedOption : styles.option;
+    // Si esta opción está seleccionada
+    if (isSelected) {
+      // Si la pregunta NO ha terminado, solo mostrar como seleccionada
+      if (!questionEnded) {
+        return styles.selectedOption;
+      }
+      // Si la pregunta ha terminado, ahora podemos mostrar si era correcta o incorrecta
+      else {
+        if (optionId === correctAnswer) {
+          return styles.correctOption;
+        } else {
+          return styles.incorrectOption;
+        }
+      }
     }
 
-    if (isCorrect) {
+    // Si no está seleccionada pero es la correcta y podemos mostrar resultados
+    if (isCorrect && showResults) {
       return styles.correctOption;
     }
 
-    if (isSelected && !isCorrect) {
-      return styles.incorrectOption;
-    }
-
-    return styles.disabledOption;
+    // Opciones no seleccionadas cuando se muestran resultados
+    return showResults ? styles.disabledOption : styles.option;
   };
 
   // Función para determinar el icono de cada opción
@@ -84,6 +92,15 @@ export function AnswerOptions({
     return null;
   };
 
+  // Agregar log para depuración
+  console.log('AnswerOptions rendering with:', {
+    selectedOption,
+    correctAnswer,
+    questionEnded,
+    showResults,
+    timeLeft,
+  });
+
   return (
     <View style={styles.optionsContainer}>
       {optionsArray.map((option) => (
@@ -91,7 +108,7 @@ export function AnswerOptions({
           key={option.id}
           style={getOptionStyle(option.id)}
           onPress={() => onOptionSelect(option.id)}
-          disabled={showResults || timeLeft === 0}
+          disabled={selectedOption !== null || questionEnded || timeLeft <= 0}
           activeOpacity={0.8}
         >
           <Text style={styles.optionText}>{option.text}</Text>

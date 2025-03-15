@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, SetStateAction } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   StyleSheet,
   Dimensions,
   Vibration,
-  Alert,
   SafeAreaView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -28,10 +27,11 @@ export default function QuizViewScreen() {
   const [gameEnded, setGameEnded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [quizStarted, setQuizStarted] = useState(false);
-  // Estado para almacenar la puntuación
   const [score, setScore] = useState(0);
   const [totalCorrect, setTotalCorrect] = useState(0);
   const [totalWrong, setTotalWrong] = useState(0);
+  const [hasAnswered, setHasAnswered] = useState(false);
+  const [localTimeLeft, setLocalTimeLeft] = useState(30);
 
   const {
     socket,
@@ -41,6 +41,7 @@ export default function QuizViewScreen() {
     timeLeft,
     questionEnded,
     correctAnswer,
+    setCorrectAnswer,
     answerSubmitted,
     setQuestionEnded,
     submitAnswer,
@@ -73,82 +74,73 @@ export default function QuizViewScreen() {
     }
   }, [currentQuestion]);
 
-  // Listen for answer results - MODIFICADO para actualizar la puntuación
   useEffect(() => {
     if (!socket) return;
 
     const handleAnswerResult = (data) => {
       console.log('Answer result received:', data);
+
+      // Marcar que este jugador ha respondido y actualizar puntuación
+      setHasAnswered(true);
+
       if (data.correct) {
         setAnswerResult('correct');
-        Vibration.vibrate([0, 70, 50, 70]); // Patrón de vibración para respuesta correcta
+        Vibration.vibrate([0, 70, 50, 70]);
 
-        // Actualizar puntuación si está disponible en el evento
+        // Actualizar puntuación
         if (data.score !== undefined) {
           setScore(data.score);
         } else {
-          // Incrementar de forma local si no viene en el evento
           setScore((prevScore) => prevScore + 1);
         }
 
-        // Actualizar contador de respuestas correctas
         setTotalCorrect((prev) => prev + 1);
       } else {
         setAnswerResult('incorrect');
-        Vibration.vibrate(150); // Vibración simple para respuesta incorrecta
-
-        // Actualizar contador de respuestas incorrectas
+        Vibration.vibrate(150);
         setTotalWrong((prev) => prev + 1);
       }
-
-      // Solo actualizar el estado de pregunta finalizada
-      setTimeout(() => {
-        setQuestionEnded(true);
-      }, 1000);
     };
 
-    const handleGameEnded = (data) => {
-      console.log('Game ended:', data);
-      setGameEnded(true);
+    const handleQuestionEnded = (data) => {
+      console.log('Question ended event received:', data);
 
-      // Mostrar resultados finales con la puntuación
-      let finalMessage =
-        'The quiz has ended. Check the main screen for results!';
+      // Marcar la pregunta como terminada para todos
+      setQuestionEnded(true);
 
-      // Si tenemos datos de resultados, mostrar la puntuación final
-      if (data && data.results && data.results[socket.id]) {
-        const myResult = data.results[socket.id];
-        finalMessage = `Game Over!\n\nYour final score: ${myResult.score} points\nCorrect answers: ${myResult.correctAnswers}/${myResult.totalAnswers}`;
-      } else {
-        finalMessage = `Game Over!\n\nYour final score: ${score} points\nCorrect answers: ${totalCorrect}/${
-          totalCorrect + totalWrong
-        }`;
+      // Establecer la respuesta correcta
+      if (data && data.correctAnswer) {
+        setCorrectAnswer(data.correctAnswer);
       }
-
-      Alert.alert('Game Over', finalMessage, [
-        {
-          text: 'OK',
-          onPress: () => router.push('/EntryCodeScreen'),
-        },
-      ]);
     };
 
     socket.on('answer_result', handleAnswerResult);
-    socket.on('game_ended', handleGameEnded);
+    socket.on('question_ended', handleQuestionEnded);
 
     return () => {
       socket.off('answer_result', handleAnswerResult);
-      socket.off('game_ended', handleGameEnded);
+      socket.off('question_ended', handleQuestionEnded);
     };
-  }, [socket, router, score, totalCorrect, totalWrong]);
+  }, [socket, setQuestionEnded, setCorrectAnswer]);
 
-  // Reset selected option when new question arrives
+  // Reset the hasAnswered state when a new question arrives
   useEffect(() => {
     if (currentQuestion) {
       setSelectedOption(null);
       setAnswerResult(null);
+      setHasAnswered(false);
+      setQuestionEnded(false);
+
+      // Resetear tiempo local
+      if (currentQuestion.timeLimit) {
+        setLocalTimeLeft(currentQuestion.timeLimit);
+      } else {
+        setLocalTimeLeft(30); // Valor predeterminado
+      }
+
+      console.log('New question received, resetting states');
     }
-  }, [currentQuestion]);
+  }, [currentQuestion, setQuestionEnded]);
 
   // Handle timeout
   useEffect(() => {
@@ -156,11 +148,6 @@ export default function QuizViewScreen() {
       setAnswerResult('timeout');
     }
   }, [timeLeft, selectedOption]);
-
-  // Monitorear cambios en el temporizador para depuración
-  useEffect(() => {
-    console.log(`⏱️ [QuizViewScreen] timeLeft changed: ${timeLeft}s`);
-  }, [timeLeft]);
 
   const handleStartQuiz = () => {
     console.log('Starting quiz, requesting first question');
@@ -174,21 +161,19 @@ export default function QuizViewScreen() {
 
   const handleOptionSelect = (option) => {
     console.log('Selecting option:', option);
-    if (selectedOption === null && !questionEnded && timeLeft > 0) {
+
+    // Solo permitir seleccionar si aún no ha respondido y la pregunta está activa
+    if (!hasAnswered && !questionEnded && timeLeft > 0) {
       setSelectedOption(option);
-      Vibration.vibrate(30);
+
+      // Enviar la respuesta al servidor
       submitAnswer(option);
 
-      // Añadir un estado local para mostrar que se está esperando la respuesta
+      // Marcar que ha respondido y establecer estado de espera
+      setHasAnswered(true);
       setAnswerResult('waiting');
 
-      // Establecer un timeout para mostrar el resultado si el servidor no responde
-      setTimeout(() => {
-        if (answerResult === 'waiting') {
-          setAnswerResult('timeout');
-          setQuestionEnded(true);
-        }
-      }, 5000); // 5 segundos de espera
+      console.log('Answer submitted, waiting for result');
     }
   };
 
@@ -316,7 +301,6 @@ export default function QuizViewScreen() {
         end={{ x: 1, y: 1 }}
         style={styles.background}
       />
-
       <View style={styles.header}>
         <View style={styles.roomInfoContainer}>
           <Text style={styles.roomCodeLabel}>ROOM</Text>
@@ -325,12 +309,12 @@ export default function QuizViewScreen() {
 
         <View style={styles.timerContainer}>
           <Text style={[styles.timer, timeLeft < 10 && styles.timerWarning]}>
-            {timeLeft}
+            {hasAnswered ? '✓' : timeLeft} {/* Mostrar check si ya respondió */}
           </Text>
         </View>
       </View>
 
-      {/* Mostrar puntuación de forma simple */}
+      {/* Mostrar puntuación */}
       <View style={styles.scoreDisplay}>
         <Text style={styles.scoreText}>Score: {score}</Text>
       </View>
@@ -340,7 +324,9 @@ export default function QuizViewScreen() {
           style={[
             styles.timerProgressBar,
             {
-              width: `${(timeLeft / (currentQuestion.timeLimit || 30)) * 100}%`,
+              width: hasAnswered
+                ? '100%' // Mantener llena si ya respondió
+                : `${(timeLeft / (currentQuestion?.timeLimit || 30)) * 100}%`,
               backgroundColor: timeLeft < 10 ? '#FF5353' : '#5F25FF',
             },
           ]}
@@ -354,7 +340,7 @@ export default function QuizViewScreen() {
         selectedOption={selectedOption}
         correctAnswer={correctAnswer}
         onOptionSelect={handleOptionSelect}
-        questionEnded={questionEnded}
+        questionEnded={questionEnded} // Este es el valor que controla mostrar la respuesta correcta
         timeLeft={timeLeft}
       />
 
@@ -426,7 +412,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-  // Elemento simple para mostrar puntuación
+
   scoreDisplay: {
     alignItems: 'center',
     paddingVertical: 8,

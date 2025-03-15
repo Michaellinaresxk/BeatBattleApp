@@ -35,6 +35,45 @@ export function useSocketConnection(gameCode, nickname) {
   const [selectionComplete, setSelectionComplete] = useState(false);
   const [answerSubmitted, setAnswerSubmitted] = useState(false);
 
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleQuestionEnded = (data) => {
+      console.log(
+        'Question ended event received in useSocketConnection:',
+        data
+      );
+
+      // Marcar la pregunta como terminada
+      setQuestionEnded(true);
+
+      // Establecer la respuesta correcta si está disponible
+      if (data && data.correctAnswer) {
+        setCorrectAnswer(data.correctAnswer);
+      }
+    };
+
+    // Escuchar eventos de nueva pregunta - resetear estados
+    const handleNewQuestion = (data) => {
+      console.log('New question received:', data);
+
+      // Resetear estados para la nueva pregunta
+      setQuestionEnded(false);
+      setCorrectAnswer(null);
+
+      // Resto del código para manejar nueva pregunta...
+    };
+
+    // Escuchar eventos
+    socket.on('question_ended', handleQuestionEnded);
+    socket.on('new_question', handleNewQuestion);
+
+    return () => {
+      socket.off('question_ended', handleQuestionEnded);
+      socket.off('new_question', handleNewQuestion);
+    };
+  }, [socket]);
+
   // Actualizar la referencia cuando cambia el gameCode
   useEffect(() => {
     roomCodeRef.current = gameCode;
@@ -425,7 +464,7 @@ export function useSocketConnection(gameCode, nickname) {
 
   // Submit answer to current question
   const submitAnswer = useCallback(
-    (answer: any) => {
+    (answer) => {
       if (!socketRef.current || !connected || !gameStarted) {
         console.error(
           'Cannot submit answer: not connected or game not started'
@@ -442,19 +481,10 @@ export function useSocketConnection(gameCode, nickname) {
         answer: answer,
       });
 
-      // Si no recibimos respuesta después de 3 segundos, mostrar el botón de siguiente pregunta
-      setTimeout(() => {
-        if (!questionEnded) {
-          console.log(
-            'No se recibió respuesta del servidor, mostrando botón de siguiente pregunta'
-          );
-          setQuestionEnded(true);
-        }
-      }, 3000);
+      // No establecer questionEnded aquí - esperar a que el servidor lo indique
     },
-    [connected, gameStarted, questionEnded]
+    [connected, gameStarted]
   );
-
   // Request current question
   const requestCurrentQuestion = useCallback(() => {
     if (!socketRef.current || !connected) {
@@ -499,19 +529,15 @@ export function useSocketConnection(gameCode, nickname) {
     setAnswerSubmitted(false);
     setQuestionEnded(false);
     setCorrectAnswer(null);
-
-    // Mostrar estado de carga hasta que llegue la nueva pregunta
     setCurrentQuestion(null);
 
-    // Establecer un tiempo de espera para volver a intentar si no recibimos la siguiente pregunta
+    // Tiempo de espera para volver a intentar si no recibimos la siguiente pregunta
     setTimeout(() => {
-      if (!currentQuestion) {
+      if (!currentQuestion && connected && socketRef.current) {
         console.log('No new question received after timeout, requesting again');
-        if (socketRef.current && connected) {
-          socketRef.current.emit('request_next_question', {
-            roomCode: roomCodeRef.current,
-          });
-        }
+        socketRef.current.emit('request_next_question', {
+          roomCode: roomCodeRef.current,
+        });
       }
     }, 5000);
   }, [connected, currentQuestion]);
@@ -603,5 +629,6 @@ export function useSocketConnection(gameCode, nickname) {
     currentScreen,
     availableOptions,
     sendControllerCommand,
+    setCorrectAnswer,
   };
 }
