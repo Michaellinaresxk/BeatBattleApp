@@ -31,6 +31,7 @@ export default function QuizViewScreen() {
   const [totalCorrect, setTotalCorrect] = useState(0);
   const [totalWrong, setTotalWrong] = useState(0);
   const [hasAnswered, setHasAnswered] = useState(false);
+  const [localTimeLeft, setLocalTimeLeft] = useState(30);
 
   const {
     socket,
@@ -79,10 +80,9 @@ export default function QuizViewScreen() {
     const handleAnswerResult = (data) => {
       console.log('Answer result received:', data);
 
-      // Marcar que este jugador ha respondido
+      // Marcar que este jugador ha respondido y actualizar puntuación
       setHasAnswered(true);
 
-      // Mostrar feedback local sobre si la respuesta fue correcta/incorrecta
       if (data.correct) {
         setAnswerResult('correct');
         Vibration.vibrate([0, 70, 50, 70]);
@@ -100,20 +100,16 @@ export default function QuizViewScreen() {
         Vibration.vibrate(150);
         setTotalWrong((prev) => prev + 1);
       }
-
-      // IMPORTANTE: NO establecer questionEnded aquí
-      // Sólo registramos que este usuario ha respondido
     };
 
     const handleQuestionEnded = (data) => {
       console.log('Question ended event received:', data);
 
-      // AHORA SÍ marcamos la pregunta como terminada para todos
+      // Marcar la pregunta como terminada para todos
       setQuestionEnded(true);
 
       // Establecer la respuesta correcta
       if (data && data.correctAnswer) {
-        console.log(`Setting correct answer: ${data.correctAnswer}`);
         setCorrectAnswer(data.correctAnswer);
       }
     };
@@ -133,7 +129,16 @@ export default function QuizViewScreen() {
       setSelectedOption(null);
       setAnswerResult(null);
       setHasAnswered(false);
-      setQuestionEnded(false); // Asegurarnos de que questionEnded es false
+      setQuestionEnded(false);
+
+      // Resetear tiempo local
+      if (currentQuestion.timeLimit) {
+        setLocalTimeLeft(currentQuestion.timeLimit);
+      } else {
+        setLocalTimeLeft(30); // Valor predeterminado
+      }
+
+      console.log('New question received, resetting states');
     }
   }, [currentQuestion, setQuestionEnded]);
 
@@ -143,11 +148,6 @@ export default function QuizViewScreen() {
       setAnswerResult('timeout');
     }
   }, [timeLeft, selectedOption]);
-
-  // Monitorear cambios en el temporizador para depuración
-  useEffect(() => {
-    console.log(`⏱️ [QuizViewScreen] timeLeft changed: ${timeLeft}s`);
-  }, [timeLeft]);
 
   const handleStartQuiz = () => {
     console.log('Starting quiz, requesting first question');
@@ -162,13 +162,18 @@ export default function QuizViewScreen() {
   const handleOptionSelect = (option) => {
     console.log('Selecting option:', option);
 
-    // Solo permitir seleccionar si no ha respondido y la pregunta aún está activa
+    // Solo permitir seleccionar si aún no ha respondido y la pregunta está activa
     if (!hasAnswered && !questionEnded && timeLeft > 0) {
       setSelectedOption(option);
+
+      // Enviar la respuesta al servidor
       submitAnswer(option);
 
-      // Establecer estado de espera para feedback visual
+      // Marcar que ha respondido y establecer estado de espera
+      setHasAnswered(true);
       setAnswerResult('waiting');
+
+      console.log('Answer submitted, waiting for result');
     }
   };
 
@@ -296,7 +301,6 @@ export default function QuizViewScreen() {
         end={{ x: 1, y: 1 }}
         style={styles.background}
       />
-
       <View style={styles.header}>
         <View style={styles.roomInfoContainer}>
           <Text style={styles.roomCodeLabel}>ROOM</Text>
@@ -305,12 +309,12 @@ export default function QuizViewScreen() {
 
         <View style={styles.timerContainer}>
           <Text style={[styles.timer, timeLeft < 10 && styles.timerWarning]}>
-            {timeLeft}
+            {hasAnswered ? '✓' : timeLeft} {/* Mostrar check si ya respondió */}
           </Text>
         </View>
       </View>
 
-      {/* Mostrar puntuación de forma simple */}
+      {/* Mostrar puntuación */}
       <View style={styles.scoreDisplay}>
         <Text style={styles.scoreText}>Score: {score}</Text>
       </View>
@@ -320,7 +324,9 @@ export default function QuizViewScreen() {
           style={[
             styles.timerProgressBar,
             {
-              width: `${(timeLeft / (currentQuestion.timeLimit || 30)) * 100}%`,
+              width: hasAnswered
+                ? '100%' // Mantener llena si ya respondió
+                : `${(timeLeft / (currentQuestion?.timeLimit || 30)) * 100}%`,
               backgroundColor: timeLeft < 10 ? '#FF5353' : '#5F25FF',
             },
           ]}
@@ -334,7 +340,7 @@ export default function QuizViewScreen() {
         selectedOption={selectedOption}
         correctAnswer={correctAnswer}
         onOptionSelect={handleOptionSelect}
-        questionEnded={questionEnded} // Pasar el estado de questionEnded
+        questionEnded={questionEnded} // Este es el valor que controla mostrar la respuesta correcta
         timeLeft={timeLeft}
       />
 
